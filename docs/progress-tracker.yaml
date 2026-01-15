@@ -1,0 +1,666 @@
+# progress-tracker.yaml
+# Single source of truth for multi-agent progress coordination.
+# Agents MUST claim locks here before starting work.
+
+project:
+  name: job-application-automation
+  updated_at: 2026-01-15T12:00:00Z
+  reference_docs:
+    project_brief: project-brief.md
+    workflow: workflow-diagram.md
+    research: research.md
+    epics_stories: epics-stories.md
+    sprint_status: sprint-status.yaml
+  default_policies:
+    require_presubmit_confirmation: true
+    do_not_bypass_captcha_or_2fa: true
+    duplicate_requires_user_prompt: true
+
+# -----------------------------------------------------------------------------
+# Rules to prevent parallel work on conflicting scopes
+# -----------------------------------------------------------------------------
+rules:
+  # If two stories share a mutex group, they must not be in progress at the same time.
+  mutex_groups:
+    core-config:
+      description: "Config loading/env mapping/entrypoints. High merge-conflict risk."
+      scopes:
+        - type: hotspot
+          id: core-config
+    runner-core:
+      description: "Core runner orchestration layer + shared agent wiring."
+      scopes:
+        - type: hotspot
+          id: runner-core
+    tracker-schema:
+      description: "DB schema, migrations, and fingerprint canonicalization."
+      scopes:
+        - type: hotspot
+          id: tracker-schema
+    site-adapters:
+      description: "Site-specific logic; avoid two agents editing same adapter concurrently."
+      scopes:
+        - type: hotspot
+          id: site-adapters
+    templates:
+      description: "Resume/cover-letter templates and rendering pipeline."
+      scopes:
+        - type: hotspot
+          id: templates
+    jd-schema:
+      description: "JD extraction schema types. Coordinate changes."
+      scopes:
+        - type: hotspot
+          id: jd-schema
+
+  # Sprints that MUST be serialized (hard dependency gates)
+  serial_gates:
+    - id: gate_autonomous_depends_on_tracker_and_extraction
+      cannot_start: ["S7"]
+      until_done: ["S1", "S2"]
+    - id: gate_multisite_depends_on_runner
+      cannot_start: ["S8"]
+      until_done: ["S4"]
+    - id: gate_hardening_depends_on_runner_and_logs
+      cannot_start: ["S9"]
+      until_done: ["S4", "S6"]
+
+  # Suggested parallelizable sprint sets (maximize throughput)
+  recommended_parallel_sets:
+    - id: set_foundations_plus_core
+      sprints: ["S0", "S1", "S2"]
+      note: "Keep interfaces stable; coordinate schema changes via jd-schema/tracker-schema mutexes."
+    - id: set_docs_runner_browser
+      sprints: ["S3", "S4", "S5"]
+      note: "Coordinate shared artifact layout and runner entrypoint via hotspots."
+    - id: set_logs_autonomous_tests
+      sprints: ["S6", "S7", "S8"]
+      note: "Autonomous requires S1+S2 done; otherwise S6 can proceed while S4 stabilizes."
+
+# -----------------------------------------------------------------------------
+# Locks (leases). Agents MUST create a lock before coding.
+# -----------------------------------------------------------------------------
+locks:
+  active: []
+  history: []
+
+# -----------------------------------------------------------------------------
+# Sprint rollups (high-level). Keep this updated.
+# -----------------------------------------------------------------------------
+sprints:
+  - id: S0
+    name: Foundations & Architecture
+    status: planned   # planned | in_progress | in_review | done | blocked
+    progress_percent: 0
+    blocked_by: []
+    hotspots: ["core-config", "runner-core"]
+    stories: ["E0-S1", "E0-S2", "E0-S3"]
+
+  - id: S1
+    name: Application Tracker + Duplicate Guard
+    status: planned
+    progress_percent: 0
+    blocked_by: ["S0"]
+    hotspots: ["tracker-schema", "core-config"]
+    stories: ["E1-S1", "E1-S2", "E1-S3", "E1-S4"]
+
+  - id: S2
+    name: JD Extraction + Fit Scoring
+    status: planned
+    progress_percent: 0
+    blocked_by: ["S0"]
+    hotspots: ["jd-schema"]
+    stories: ["E2-S1", "E2-S2", "E2-S3", "E2-S4"]
+
+  - id: S3
+    name: Tailoring + Document Generation
+    status: planned
+    progress_percent: 0
+    blocked_by: ["S0"]
+    hotspots: ["templates", "artifact-layout"]
+    stories: ["E3-S1", "E3-S2", "E3-S3", "E3-S4"]
+
+  - id: S4
+    name: Application Runner v1 (Single Site)
+    status: planned
+    progress_percent: 0
+    blocked_by: ["S0", "S1"]
+    hotspots: ["runner-core", "site-adapters"]
+    stories: ["E4-S1", "E4-S2", "E4-S3", "E4-S4"]
+
+  - id: S5
+    name: Browser Session + Safety Rails
+    status: planned
+    progress_percent: 0
+    blocked_by: ["S0"]
+    hotspots: ["core-config", "runner-core"]
+    stories: ["E5-S1", "E5-S2", "E5-S3"]
+
+  - id: S6
+    name: Human-in-the-loop + Audit Logs
+    status: planned
+    progress_percent: 0
+    blocked_by: ["S0"]
+    hotspots: ["runner-core", "tracker-schema"]
+    stories: ["E6-S1", "E6-S2", "E6-S3", "E6-S4"]
+
+  - id: S7
+    name: Autonomous Mode (Queue + Scheduler)
+    status: planned
+    progress_percent: 0
+    blocked_by: ["S1", "S2"]
+    hotspots: ["queue", "scoring-integration"]
+    stories: ["E7-S1", "E7-S2", "E7-S3"]
+
+  - id: S8
+    name: Multi-site Support + Test Harness
+    status: planned
+    progress_percent: 0
+    blocked_by: ["S4"]
+    hotspots: ["site-adapters"]
+    stories: ["E8-S1", "E8-S2", "E8-S3"]
+
+  - id: S9
+    name: Hardening + Performance
+    status: planned
+    progress_percent: 0
+    blocked_by: ["S4", "S6"]
+    hotspots: ["agent-settings", "performance"]
+    stories: ["E9-S1", "E9-S2", "E9-S3"]
+
+# -----------------------------------------------------------------------------
+# Epics + stories (the working status list). Agents update these entries.
+# -----------------------------------------------------------------------------
+stories:
+  - id: E0-S1
+    epic: E0
+    sprint: S0
+    title: "Repo scaffold + environment"
+    status: planned   # planned | in_progress | in_review | done | blocked
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: []
+    mutex_groups: ["core-config"]
+    notes: ""
+    evidence:
+      pr: null
+      tests: []
+      artifacts: []
+
+  - id: E0-S2
+    epic: E0
+    sprint: S0
+    title: "Browser Use hello world harness"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: []
+    mutex_groups: ["runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E0-S3
+    epic: E0
+    sprint: S0
+    title: "Config system"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: []
+    mutex_groups: ["core-config"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E1-S1
+    epic: E1
+    sprint: S1
+    title: "URL canonicalization"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S0"]
+    mutex_groups: ["tracker-schema"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E1-S2
+    epic: E1
+    sprint: S1
+    title: "Fingerprinting"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S0"]
+    mutex_groups: ["tracker-schema"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E1-S3
+    epic: E1
+    sprint: S1
+    title: "Tracker storage (SQLite preferred)"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S0"]
+    mutex_groups: ["tracker-schema"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E1-S4
+    epic: E1
+    sprint: S1
+    title: "Duplicate prompt gate"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E6-S1", "E1-S3"]
+    mutex_groups: ["tracker-schema"]
+    notes: "Requires ask-human tool library."
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E2-S1
+    epic: E2
+    sprint: S2
+    title: "JD extraction schema"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S0"]
+    mutex_groups: ["jd-schema"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E2-S2
+    epic: E2
+    sprint: S2
+    title: "JD extractor (Browser Use)"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E2-S1"]
+    mutex_groups: ["jd-schema"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E2-S3
+    epic: E2
+    sprint: S2
+    title: "Fit scoring rules"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E2-S1"]
+    mutex_groups: ["jd-schema"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E2-S4
+    epic: E2
+    sprint: S2
+    title: "Constraint checks"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E2-S1"]
+    mutex_groups: ["jd-schema"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E3-S1
+    epic: E3
+    sprint: S3
+    title: "Tailoring plan generator"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E2-S1"]
+    mutex_groups: ["templates"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E3-S2
+    epic: E3
+    sprint: S3
+    title: "Resume tailoring"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E3-S1"]
+    mutex_groups: ["templates"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E3-S3
+    epic: E3
+    sprint: S3
+    title: "Cover letter generator"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E3-S1"]
+    mutex_groups: ["templates"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E3-S4
+    epic: E3
+    sprint: S3
+    title: "Doc review packet"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E3-S2", "E3-S3"]
+    mutex_groups: ["templates"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E4-S1
+    epic: E4
+    sprint: S4
+    title: "Site adapter v1 (choose 1 site)"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S1", "S0"]
+    mutex_groups: ["site-adapters", "runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E4-S2
+    epic: E4
+    sprint: S4
+    title: "Q&A bank integration"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E4-S1"]
+    mutex_groups: ["runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E4-S3
+    epic: E4
+    sprint: S4
+    title: "Pre-submit checkpoint (default required)"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E6-S1"]
+    mutex_groups: ["runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E4-S4
+    epic: E4
+    sprint: S4
+    title: "Proof capture"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E4-S1"]
+    mutex_groups: ["runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E5-S1
+    epic: E5
+    sprint: S5
+    title: "Existing Chrome profile support"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S0"]
+    mutex_groups: ["core-config", "runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E5-S2
+    epic: E5
+    sprint: S5
+    title: "Domain allowlist/blocklist"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S0"]
+    mutex_groups: ["core-config"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E5-S3
+    epic: E5
+    sprint: S5
+    title: "Download handling"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S0"]
+    mutex_groups: ["core-config"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E6-S1
+    epic: E6
+    sprint: S6
+    title: "Ask-human tool library"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S0"]
+    mutex_groups: ["runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E6-S2
+    epic: E6
+    sprint: S6
+    title: "Sensitive data vault integration"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E6-S1"]
+    mutex_groups: ["runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E6-S3
+    epic: E6
+    sprint: S6
+    title: "File access constraints"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E6-S1"]
+    mutex_groups: ["runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E6-S4
+    epic: E6
+    sprint: S6
+    title: "Run log saving"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E6-S1"]
+    mutex_groups: ["runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E7-S1
+    epic: E7
+    sprint: S7
+    title: "Lead intake adapters"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S1", "S2"]
+    mutex_groups: []
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E7-S2
+    epic: E7
+    sprint: S7
+    title: "Queue manager"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E7-S1"]
+    mutex_groups: []
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E7-S3
+    epic: E7
+    sprint: S7
+    title: "Scheduler"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["E7-S2"]
+    mutex_groups: []
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E8-S1
+    epic: E8
+    sprint: S8
+    title: "Second site adapter"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S4"]
+    mutex_groups: ["site-adapters"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E8-S2
+    epic: E8
+    sprint: S8
+    title: "Integration test harness"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S4"]
+    mutex_groups: ["site-adapters"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E8-S3
+    epic: E8
+    sprint: S8
+    title: "Layout-changed fallback improvements"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S4"]
+    mutex_groups: ["site-adapters"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E9-S1
+    epic: E9
+    sprint: S9
+    title: "Vision/extraction tuning"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S4", "S6"]
+    mutex_groups: ["runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E9-S2
+    epic: E9
+    sprint: S9
+    title: "CodeAgent scaling for lead processing"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S7"]
+    mutex_groups: []
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}
+
+  - id: E9-S3
+    epic: E9
+    sprint: S9
+    title: "Fast mode experiments"
+    status: planned
+    owner: null
+    started_at: null
+    updated_at: null
+    blocked: false
+    blockers: ["S4", "S6"]
+    mutex_groups: ["runner-core"]
+    notes: ""
+    evidence: {pr: null, tests: [], artifacts: []}

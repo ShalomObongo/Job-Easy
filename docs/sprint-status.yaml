@@ -1,0 +1,185 @@
+# sprint-status.yaml
+# Purpose: show which sprints can run concurrently vs which are blocked/serial.
+# Interpretation:
+# - "blocked_by" indicates hard dependencies (cannot start until blockers complete).
+# - "shared_hotspots" indicates high-merge-conflict risk (avoid running concurrently unless coordinated).
+# - "can_run_concurrently_with" lists recommended parallel sprints for maximizing throughput.
+
+project: job-application-automation
+date: 2026-01-15
+default_sprint_length_days: 10
+
+concurrency_groups:
+  - group: "G1 Foundations + Core Logic"
+    recommended_parallel_sprints: ["S0", "S1", "S2"]
+    note: "S1/S2 can start in parallel with S0 if repo scaffolding is minimal and teams work in separate modules."
+  - group: "G2 Docs + Runner + Browser Config"
+    recommended_parallel_sprints: ["S3", "S4", "S5"]
+    note: "Document generation, application runner, and browser config can proceed in parallel; coordinate shared interfaces."
+  - group: "G3 Logs + Autonomous + Tests"
+    recommended_parallel_sprints: ["S6", "S7", "S8"]
+    note: "After core runner exists, build logging/audit, autonomous queue, and test harness in parallel."
+  - group: "G4 Hardening"
+    recommended_parallel_sprints: ["S9"]
+    note: "Hardening/performance should mostly be done after earlier functionality exists."
+
+serial_constraints:
+  - rule: "Autonomous mode depends on tracker + extraction"
+    cannot_start: ["S7"]
+    until_done: ["S1", "S2"]
+  - rule: "Multi-site adapters depend on having a stable baseline runner"
+    cannot_start: ["S8"]
+    until_done: ["S4"]
+  - rule: "Hardening depends on stable paths to tune"
+    cannot_start: ["S9"]
+    until_done: ["S4", "S6"]
+
+sprints:
+  - id: "S0"
+    name: "Foundations & Architecture"
+    status: "planned"
+    goals:
+      - "Repo scaffold, config system, CI"
+      - "Browser Use hello-run harness"
+    blocked_by: []
+    shared_hotspots: ["core-config", "runner-entrypoint"]
+    can_run_concurrently_with: ["S1", "S2"]
+    cannot_run_concurrently_with: []
+    outputs:
+      - "Working local dev environment"
+      - "Baseline agent run"
+
+  - id: "S1"
+    name: "Application Tracker + Duplicate Guard"
+    status: "planned"
+    goals:
+      - "Canonical URL + fingerprinting"
+      - "SQLite tracker CRUD + statuses"
+      - "Duplicate prompt + override logging"
+    blocked_by: ["S0"]
+    shared_hotspots: ["tracker-schema", "app-core-types"]
+    can_run_concurrently_with: ["S2"]
+    cannot_run_concurrently_with: []
+    outputs:
+      - "tracker.db (or CSV)"
+      - "fingerprint module"
+      - "duplicate gate prompt"
+
+  - id: "S2"
+    name: "JD Extraction + Fit Scoring"
+    status: "planned"
+    goals:
+      - "JD schema + extractor using Browser Use tools"
+      - "Fit scoring + constraint checks"
+    blocked_by: ["S0"]
+    shared_hotspots: ["jd-schema", "scoring-model"]
+    can_run_concurrently_with: ["S1", "S3"]
+    cannot_run_concurrently_with: []
+    outputs:
+      - "jd.json per job"
+      - "score + reasons"
+
+  - id: "S3"
+    name: "Tailoring + Document Generation"
+    status: "planned"
+    goals:
+      - "Tailoring plan"
+      - "Resume + cover letter generation"
+      - "PDF/DOCX rendering + naming"
+      - "Doc review packet"
+    blocked_by: ["S0"]
+    shared_hotspots: ["artifact-layout", "templates"]
+    can_run_concurrently_with: ["S2", "S4", "S5"]
+    cannot_run_concurrently_with: []
+    outputs:
+      - "Resume__Company__Role__DATE.(pdf/docx)"
+      - "CoverLetter__Company__Role__DATE.(pdf/docx)"
+
+  - id: "S4"
+    name: "Application Runner v1 (Single Site)"
+    status: "planned"
+    goals:
+      - "One site adapter (Greenhouse/Lever/Workday)"
+      - "Form fill + uploads + pre-submit checkpoint"
+      - "Proof capture + tracker update"
+    blocked_by: ["S0", "S1"]
+    shared_hotspots: ["runner-core", "site-adapters"]
+    can_run_concurrently_with: ["S3", "S5", "S6"]
+    cannot_run_concurrently_with: []
+    outputs:
+      - "Successful submission (with manual confirmation)"
+      - "Proof artifacts + tracker update"
+
+  - id: "S5"
+    name: "Browser Session + Safety Rails"
+    status: "planned"
+    goals:
+      - "Existing Chrome profile config"
+      - "allowed_domains/prohibited_domains policy"
+      - "Download handling settings"
+    blocked_by: ["S0"]
+    shared_hotspots: ["browser-config", "runner-entrypoint"]
+    can_run_concurrently_with: ["S3", "S4", "S6"]
+    cannot_run_concurrently_with: []
+    outputs:
+      - "Profile-enabled browser runs"
+      - "Navigation restriction policies"
+
+  - id: "S6"
+    name: "Human-in-the-loop + Audit Logs"
+    status: "planned"
+    goals:
+      - "ask-human tool suite (yes/no, free text, OTP)"
+      - "sensitive_data + available_file_paths enforcement"
+      - "save_conversation_path logging"
+    blocked_by: ["S0"]
+    shared_hotspots: ["prompting-tools", "logging"]
+    can_run_concurrently_with: ["S4", "S5"]
+    cannot_run_concurrently_with: []
+    outputs:
+      - "Reusable prompt tools"
+      - "Per-run logs + constrained uploads"
+
+  - id: "S7"
+    name: "Autonomous Mode (Queue + Scheduler)"
+    status: "planned"
+    goals:
+      - "Lead intake + queue + ranking"
+      - "Daily caps + dry-run mode"
+      - "Scheduled execution"
+    blocked_by: ["S1", "S2"]
+    shared_hotspots: ["queue", "scoring-integration"]
+    can_run_concurrently_with: ["S6"]
+    cannot_run_concurrently_with: []
+    outputs:
+      - "Autonomous loop that processes a queue safely"
+
+  - id: "S8"
+    name: "Multi-site Support + Test Harness"
+    status: "planned"
+    goals:
+      - "Second site adapter"
+      - "Integration tests + regression harness"
+      - "Fallback playbooks for layout changes"
+    blocked_by: ["S4"]
+    shared_hotspots: ["site-adapters"]
+    can_run_concurrently_with: ["S7"]
+    cannot_run_concurrently_with: []
+    outputs:
+      - "2+ supported sites"
+      - "Regression checks"
+
+  - id: "S9"
+    name: "Hardening + Performance"
+    status: "planned"
+    goals:
+      - "Vision + extraction LLM tuning"
+      - "CodeAgent scaling for lead processing"
+      - "Optional fast-mode experiments gated by tests"
+    blocked_by: ["S4", "S6"]
+    shared_hotspots: ["agent-settings", "performance"]
+    can_run_concurrently_with: []
+    cannot_run_concurrently_with: []
+    outputs:
+      - "More robust, faster runs"
+      - "Stability metrics and tuned defaults"

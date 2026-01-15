@@ -1,0 +1,63 @@
+{
+  "company": "Odixcity Consulting",
+  "role_title": "JavaScript Developer",
+  "job_url": "https://www.linkedin.com/jobs/collections/recommended/?currentJobId=4289812574",
+  "location": "Kenya (Remote)",
+  "apply_url": null,
+  "job_id": null,
+  "description": "The Role\nYou will be responsible for:\n- Write, modify, and debug web applications using Node.js, JavaScript, HTML, and CSS\n- Design, code, and manage automated test scripts, continuous builds, and deployment\n- Create modern and responsive layouts based on designs and messaging provided by the creative team\n- Develop new features, enhance existing features, and implement bug fixes for code\n- Self-document development processes, conduct peer reviews, and give actionable feedback\n- Architect, design, and develop web applications to support internal and external clients and stakeholders\n- Collaborate with a team of developers to design end-to-end, industry-leading systems and solutions\n- Rapidly prototype new ideas, concepts, and designs\n- Work with agile development methodologies, adhering to best practices and pursuing continued-learning opportunities\n- Research and develop new web and mobile technology applications to improve user interface\n\nIdeal Profile\n- You possess a Degree/Diploma in Computer Science, Engineering or related field.\n- You have at least 5 years' experience, ideally within a Software Engineer role.\n- You are a strong team player who can manage multiple stakeholders\n- You are highly goal driven and work well in fast paced environments\n- You pay strong attention to detail and deliver work that is of a high standard\n- 3- 5 years of experience with HTML/CSS/JavaScript, node js, react js, mongo DB and JavaScript frameworks such as jQuery\n- Experience working in a lean/agile development environment with remote teams\n- Exceptional communication, organizational, and leadership skills\n- Knowledge of client-side single-page applications that use a modern framework such as React js , Backbone, or Ruby\n- Excellent debugging and optimization skills\n- Unit/integration testing experience\n\nWhat's on Offer?\n- Excellent career development opportunities\n- Work within a company with a solid track record of success\n- Leadership Role",
+  "responsibilities": [
+    "Write, modify, and debug web applications using Node.js, JavaScript, HTML, and CSS",
+    "Design, code, and manage automated test scripts, continuous builds, and deployment",
+    "Create modern and responsive layouts based on designs and messaging provided by the creative team",
+    "Develop new features, enhance existing features, and implement bug fixes for code",
+    "Self-document development processes, conduct peer reviews, and give actionable feedback",
+    "Architect, design, and develop web applications to support internal and external clients and stakeholders",
+    "Collaborate with a team of developers to design end-to-end, industry-leading systems and solutions",
+    "Rapidly prototype new ideas, concepts, and designs",
+    "Work with agile development methodologies, adhering to best practices and pursuing continued-learning opportunities",
+    "Research and develop new web and mobile technology applications to improve user interface"
+  ],
+  "qualifications": [
+    "Degree/Diploma in Computer Science, Engineering or related field",
+    "At least 5 years' experience (ideally within a Software Engineer role)",
+    "3-5 years of experience with HTML/CSS/JavaScript, Node.js, React.js, MongoDB and JavaScript frameworks such as jQuery",
+    "Experience working in a lean/agile development environment with remote teams",
+    "Exceptional communication, organizational, and leadership skills",
+    "Knowledge of client-side single-page applications using frameworks such as React.js, Backbone, or Ruby",
+    "Excellent debugging and optimization skills",
+    "Unit/integration testing experience",
+    "Strong team player; ability to manage multiple stakeholders; attention to detail; goal-driven; works well in fast-paced environments"
+  ],
+  "required_skills": [
+    "Node.js",
+    "JavaScript",
+    "HTML",
+    "CSS",
+    "React.js",
+    "MongoDB",
+    "JavaScript frameworks such as jQuery",
+    "Automated test scripts / continuous integration & deployment",
+    "Unit and integration testing",
+    "Debugging and optimization",
+    "Agile development methodologies",
+    "Experience with single-page application frameworks"
+  ],
+  "preferred_skills": [
+    "Exceptional communication, organizational, and leadership skills",
+    "Experience working with remote teams",
+    "Experience in lean/agile environments",
+    "Ability to self-document processes, conduct peer reviews, and provide actionable feedback",
+    "Rapid prototyping skills"
+  ],
+  "experience_years_min": 5,
+  "experience_years_max": null,
+  "education": "Degree or Diploma in Computer Science, Engineering, or related field",
+  "salary_min": 9600,
+  "salary_max": 12000,
+  "salary_currency": "USD",
+  "work_type": "remote",
+  "employment_type": "full-time",
+  "extracted_at": "2026-01-15T15:33:30.487534Z",
+  "extraction_source": "linkedin"
+}

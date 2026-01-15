@@ -1,0 +1,142 @@
+"""Configuration settings for Job-Easy."""
+
+from enum import Enum
+from pathlib import Path
+from typing import Annotated
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Mode(str, Enum):
+    """Application operating mode."""
+
+    SINGLE = "single"
+    AUTONOMOUS = "autonomous"
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables.
+
+    All settings have sensible defaults and can be overridden via
+    environment variables or a .env file.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # Operating mode
+    mode: Mode = Field(
+        default=Mode.SINGLE,
+        description="Operating mode: 'single' for one job, 'autonomous' for batch",
+    )
+
+    # Safety settings
+    auto_submit: bool = Field(
+        default=False,
+        description="If True, submit applications automatically (NOT RECOMMENDED)",
+    )
+
+    # Application limits
+    max_applications_per_day: Annotated[int, Field(gt=0)] = Field(
+        default=10,
+        description="Maximum applications to process per day in autonomous mode",
+    )
+
+    # Paths
+    tracker_db_path: Path = Field(
+        default=Path("./data/tracker.db"),
+        description="Path to the SQLite tracker database",
+    )
+    output_dir: Path = Field(
+        default=Path("./artifacts"),
+        description="Directory for generated artifacts",
+    )
+
+    # Chrome profile settings
+    use_existing_chrome_profile: bool = Field(
+        default=False,
+        description="Use an existing Chrome profile for sessions",
+    )
+    chrome_user_data_dir: Path | None = Field(
+        default=None,
+        description="Chrome user data directory path",
+    )
+    chrome_profile_dir: str = Field(
+        default="Default",
+        description="Chrome profile directory name",
+    )
+    chrome_profile_mode: str = Field(
+        default="auto",
+        description="Chrome profile mode: 'copy' (safe), 'direct' (use in place), or 'auto'",
+    )
+
+    # API settings
+    llm_api_key: str | None = Field(
+        default=None,
+        description="API key for LLM provider (OpenAI, Anthropic, etc.)",
+    )
+
+    # Logging
+    log_level: str = Field(
+        default="INFO",
+        description="Logging level: DEBUG, INFO, WARNING, ERROR",
+    )
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def validate_mode(cls, v: str | Mode) -> Mode:
+        """Convert string mode to Mode enum."""
+        if isinstance(v, Mode):
+            return v
+        if isinstance(v, str):
+            v_lower = v.lower()
+            if v_lower == "single":
+                return Mode.SINGLE
+            elif v_lower == "autonomous":
+                return Mode.AUTONOMOUS
+            else:
+                raise ValueError(f"Invalid mode: {v}. Must be 'single' or 'autonomous'")
+        raise ValueError(f"Invalid mode type: {type(v)}")
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        """Validate log level is a known level."""
+        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if v.upper() not in valid_levels:
+            raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
+        return v.upper()
+
+    @field_validator("chrome_profile_mode", mode="before")
+    @classmethod
+    def validate_chrome_profile_mode(cls, v: str) -> str:
+        """Validate chrome_profile_mode."""
+        if not isinstance(v, str):
+            raise ValueError("chrome_profile_mode must be a string")
+        value = v.lower().strip()
+        if value not in {"auto", "copy", "direct"}:
+            raise ValueError("chrome_profile_mode must be one of: auto, copy, direct")
+        return value
+
+
+# Singleton instance for easy import
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Get the application settings singleton."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
+
+
+def reset_settings() -> None:
+    """Reset the settings singleton (useful for testing)."""
+    global _settings
+    _settings = None
