@@ -82,6 +82,9 @@ artifacts/runs/*
 profiles/*.json
 profiles/*.yaml
 !profiles/.gitkeep
+!profiles/profile.example.yaml
+profiles/browser-use-user-data-dir-chrome
+profiles/browser-use-user-data-dir-chrome/  # chrome user-data dir we generate locally
 
 # Secrets
 .env.local

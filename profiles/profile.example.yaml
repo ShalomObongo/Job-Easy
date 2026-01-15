@@ -1,0 +1,79 @@
+# Example Job-Easy profile for fit scoring
+#
+# Copy this file to `profiles/profile.yaml` and customize.
+#
+# Notes:
+# - Dates can be written as YYYY-MM-DD.
+# - Salary is an annual base salary in your chosen currency.
+#
+
+# =============================================================================
+# BASIC INFO
+# =============================================================================
+name: "Jane Doe"
+email: "jane.doe@example.com"
+phone: "+1-555-555-5555" # Optional
+location: "New York, NY"
+linkedin_url: "https://www.linkedin.com/in/janedoe" # Optional
+
+# =============================================================================
+# SKILLS & EXPERIENCE
+# =============================================================================
+skills:
+  - "Python"
+  - "SQL"
+  - "AWS"
+  - "Docker"
+  - "PostgreSQL"
+years_of_experience: 5
+current_title: "Software Engineer" # Optional (defaults to "")
+summary: "Backend engineer with experience building data-heavy services." # Optional
+
+# =============================================================================
+# WORK HISTORY
+# =============================================================================
+work_history:
+  - company: "ExampleCo"
+    title: "Software Engineer"
+    start_date: 2021-06-01
+    end_date: null # Optional; use null if current role
+    description: "Built backend APIs and data pipelines."
+    skills_used:
+      - "Python"
+      - "PostgreSQL"
+      - "AWS"
+
+# =============================================================================
+# EDUCATION
+# =============================================================================
+education:
+  - institution: "Example University"
+    degree: "Bachelor's"
+    field: "Computer Science"
+    graduation_year: 2019 # Optional
+
+# =============================================================================
+# CONSTRAINTS / PREFERENCES
+# =============================================================================
+
+# Acceptable work types. Defaults to all three if omitted.
+work_type_preferences:
+  - remote
+  - hybrid
+
+# If null, any location is acceptable (subject to work_type).
+target_locations:
+  - "New York, NY"
+  - "Remote"
+
+# Whether you require visa sponsorship.
+visa_sponsorship_needed: false
+
+# Minimum acceptable salary (annual).
+min_salary: 120000 # Optional; null disables salary filtering
+preferred_salary: 150000 # Optional
+salary_currency: "USD"
+
+# Self-reported experience level.
+experience_level: "mid"
+

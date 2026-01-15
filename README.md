@@ -30,6 +30,23 @@ python -m src single https://example.com/job/123
 pytest
 ```
 
+## Fit Scoring
+
+1. Copy `profiles/profile.example.yaml` to `profiles/profile.yaml` and customize it.
+2. Set `SCORING_PROFILE_PATH=profiles/profile.yaml` in your `.env` (see `.env.example`).
+
+Example usage:
+
+```python
+from src.extractor.models import JobDescription
+from src.scoring import FitScoringService, ProfileService
+
+profile = ProfileService().load_profile("profiles/profile.yaml")
+job = JobDescription(company="ExampleCo", role_title="Engineer", job_url="https://example.com/jobs/123")
+result = FitScoringService().evaluate(job, profile)
+print(FitScoringService().format_result(result))
+```
+
 ## Development
 
 See `conductor/workflow.md` for development methodology and conventions.

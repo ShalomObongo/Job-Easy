@@ -6,11 +6,17 @@
 
 ## Active Tracks
 
-### [track_20260115_190146] Fit Scoring
+*No active tracks.*
+
+---
+
+## Completed Tracks
+
+### [track_20260115_190146] Fit Scoring ✅
 - **Type**: Feature
 - **Priority**: High
-- **Status**: Pending
-- **Created**: 2026-01-15
+- **Status**: Completed
+- **Completed**: 2026-01-15
 - **Epic Reference**: E2-S3, E2-S4
 - **Spec**: [spec.md](./tracks/track_20260115_190146/spec.md)
 - **Plan**: [plan.md](./tracks/track_20260115_190146/plan.md)
@@ -25,10 +31,6 @@ Implement fit scoring system with user profile management, weighted scoring algo
 - `/src/scoring/matchers.py` - Skill matching utilities
 - `/profiles/profile.example.yaml` - Example profile template
 - Unit tests + integration tests
-
----
-
-## Completed Tracks
 
 ### [track_20260115_044908] Job Extractor ✅
 - **Type**: Feature
