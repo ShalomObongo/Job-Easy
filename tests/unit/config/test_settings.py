@@ -108,8 +108,18 @@ class TestSettingsValidation:
 class TestSettingsOptionalFields:
     """Test optional configuration fields."""
 
-    def test_settings_chrome_profile_optional(self):
+    def test_settings_chrome_profile_optional(self, monkeypatch):
         """Chrome profile settings should be optional."""
+        # Ensure a clean environment even if the developer has Chrome profile
+        # env vars set locally (e.g., via shell profile/direnv).
+        for var in [
+            "USE_EXISTING_CHROME_PROFILE",
+            "CHROME_USER_DATA_DIR",
+            "CHROME_PROFILE_DIR",
+            "CHROME_PROFILE_MODE",
+        ]:
+            monkeypatch.delenv(var, raising=False)
+
         from src.config.settings import Settings
 
         settings = Settings(_env_file=None)
