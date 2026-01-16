@@ -59,7 +59,7 @@ class TailoringConfig(BaseSettings):
         description="Maximum retry attempts for LLM calls",
     )
     llm_timeout: Annotated[float, Field(gt=0)] = Field(
-        default=180.0,
+        default=300.0,
         description="Timeout in seconds for LLM calls",
     )
 
