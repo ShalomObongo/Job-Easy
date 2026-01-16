@@ -12,6 +12,16 @@
 
 ## Completed Tracks
 
+### [track_20260116_022216] Tailoring & Document Generation ✅
+- **Type**: Feature
+- **Status**: Completed
+- **Completed**: 2026-01-16
+- **Epic Reference**: E3
+- **Spec**: [spec.md](./tracks/track_20260116_022216/spec.md)
+- **Plan**: [plan.md](./tracks/track_20260116_022216/plan.md)
+
+Resume tailoring, cover letter generation, and PDF rendering with LLM-powered content rewriting and WeasyPrint output.
+
 ### [track_20260115_190146] Fit Scoring ✅
 - **Type**: Feature
 - **Priority**: High

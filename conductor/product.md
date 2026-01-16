@@ -19,6 +19,11 @@ The system operates in two modes:
 
 ---
 
+## Research
+Check conductor/research.md for detailed research notes that informed the product design.
+
+---
+
 ## Target Users
 
 ### Primary User: Job Seeker

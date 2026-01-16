@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cover Letter - {{ target_company }}</title>
+    <style>{{ styles | safe }}</style>
+</head>
+<body>
+    <div class="cover-letter">
+        <!-- Header -->
+        <header class="letter-header">
+            <div class="letter-date">{{ date }}</div>
+        </header>
+
+        <!-- Letter body -->
+        <div class="letter-body">
+            <!-- Opening -->
+            <div class="letter-opening">
+                {{ opening | replace('\n', '<br>') | safe }}
+            </div>
+
+            <!-- Body -->
+            <div class="letter-content">
+                {% for paragraph in body_paragraphs %}
+                <p>{{ paragraph }}</p>
+                {% endfor %}
+            </div>
+
+            <!-- Closing -->
+            <div class="letter-closing">
+                {{ closing | replace('\n', '<br>') | safe }}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

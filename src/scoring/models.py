@@ -49,6 +49,29 @@ class Education(BaseModel):
         return cls.model_validate(data)
 
 
+class Certification(BaseModel):
+    """Certification / training entry for a user's profile."""
+
+    name: str = Field(..., description="Certification or training name")
+    issuer: str | None = Field(
+        default=None, description="Issuing organization/provider"
+    )
+    date_awarded: date | None = Field(
+        default=None, description="Date awarded/completed"
+    )
+    expires: date | None = Field(default=None, description="Expiration date")
+    url: str | None = Field(default=None, description="Verification URL")
+
+    def to_dict(self) -> dict:
+        """Serialize to a dictionary."""
+        return self.model_dump(mode="json")
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Certification:
+        """Deserialize from a dictionary."""
+        return cls.model_validate(data)
+
+
 class UserProfile(BaseModel):
     """User profile used for fit scoring."""
 
@@ -71,6 +94,10 @@ class UserProfile(BaseModel):
     )
     education: list[Education] = Field(
         default_factory=list, description="Education history"
+    )
+    certifications: list[Certification] = Field(
+        default_factory=list,
+        description="Certifications and trainings (optional)",
     )
 
     # Constraints and preferences

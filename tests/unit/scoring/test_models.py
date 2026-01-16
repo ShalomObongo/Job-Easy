@@ -118,6 +118,38 @@ class TestEducation:
         assert restored.graduation_year == education.graduation_year
 
 
+class TestCertification:
+    """Test Certification model."""
+
+    def test_certification_valid_creation(self):
+        """Certification should validate required fields."""
+        from src.scoring.models import Certification
+
+        cert = Certification(
+            name="AWS Certified Solutions Architect – Associate",
+            issuer="Amazon Web Services",
+            date_awarded=date(2023, 8, 15),
+            expires=None,
+            url="https://www.credly.com/",
+        )
+
+        assert cert.name
+        assert cert.issuer == "Amazon Web Services"
+        assert cert.date_awarded == date(2023, 8, 15)
+
+    def test_certification_to_dict_from_dict_round_trip(self):
+        """Certification should serialize/deserialize with to_dict/from_dict."""
+        from src.scoring.models import Certification
+
+        cert = Certification(name="Example Cert", issuer=None, date_awarded=None)
+
+        data = cert.to_dict()
+        restored = Certification.from_dict(data)
+
+        assert restored.name == cert.name
+        assert restored.issuer == cert.issuer
+
+
 class TestUserProfile:
     """Test UserProfile model."""
 
@@ -185,6 +217,7 @@ class TestUserProfile:
         assert profile.summary == ""
         assert profile.work_history == []
         assert profile.education == []
+        assert profile.certifications == []
         assert profile.work_type_preferences == ["remote", "hybrid", "onsite"]
         assert profile.target_locations is None
         assert profile.visa_sponsorship_needed is False

@@ -79,6 +79,8 @@ data/*.db
 data/*.sqlite
 artifacts/runs/*
 !artifacts/runs/.gitkeep
+artifacts/docs/*
+!artifacts/docs/.gitkeep
 profiles/*.json
 profiles/*.yaml
 !profiles/.gitkeep

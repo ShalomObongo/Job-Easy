@@ -53,6 +53,16 @@ education:
     graduation_year: 2019 # Optional
 
 # =============================================================================
+# CERTIFICATIONS / TRAINING (OPTIONAL)
+# =============================================================================
+certifications:
+  - name: "AWS Certified Solutions Architect – Associate"
+    issuer: "Amazon Web Services"
+    date_awarded: 2023-08-15 # Optional
+    expires: null # Optional
+    url: "https://www.credly.com/" # Optional
+
+# =============================================================================
 # CONSTRAINTS / PREFERENCES
 # =============================================================================
 
@@ -76,4 +86,3 @@ salary_currency: "USD"
 
 # Self-reported experience level.
 experience_level: "mid"
-

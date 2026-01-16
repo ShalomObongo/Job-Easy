@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ name }} - Resume</title>
+    <style>{{ styles | safe }}</style>
+</head>
+<body>
+    <div class="resume">
+        <!-- Header with contact info -->
+        <header class="resume-header">
+            <h1 class="resume-name">{{ name }}</h1>
+            <ul class="resume-contact">
+                <li>{{ email }}</li>
+                {% if phone %}<li>{{ phone }}</li>{% endif %}
+                <li>{{ location }}</li>
+                {% if linkedin_url %}
+                <li><a href="{{ linkedin_url }}">{{ linkedin_url | replace('https://', '') | replace('http://', '') }}</a></li>
+                {% endif %}
+            </ul>
+        </header>
+
+        <!-- Professional Summary -->
+        <section class="resume-section">
+            <h2 class="section-title">Professional Summary</h2>
+            <p class="resume-summary">{{ summary }}</p>
+        </section>
+
+        <!-- Dynamic sections -->
+        {% for section in sections %}
+        <section class="resume-section">
+            <h2 class="section-title">{{ section.title }}</h2>
+
+            {% if section.entries %}
+            <div class="entries">
+                {% for entry in section.entries %}
+                <div class="entry">
+                    {% if entry.heading %}
+                    <div class="entry-header">
+                        <div class="entry-title">
+                            {{ entry.heading }}
+                            {% if entry.subheading %}<span class="entry-sep">—</span><span class="entry-subheading">{{ entry.subheading }}</span>{% endif %}
+                        </div>
+                        {% if entry.dates %}<div class="entry-dates">{{ entry.dates }}</div>{% endif %}
+                    </div>
+                    {% endif %}
+
+                    <ul class="entry-bullets">
+                        {% for bullet in entry.bullets %}
+                        <li>{{ bullet }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if section.skill_groups %}
+            <div class="skills-grid">
+                {% for group in section.skill_groups %}
+                <div class="skills-label">{{ group.label }}</div>
+                <div class="skills-items">
+                    {% for item in group["items"] %}
+                    <span class="skill">{{ item }}</span>{% if not loop.last %}<span class="skill-sep">·</span>{% endif %}
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if section.content_lines %}
+            <div class="content-lines">
+                {% for line in section.content_lines %}
+                <div class="content-line">{{ line }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if section.content and not section.entries and not section.skill_groups and not section.content_items and not section.content_lines %}
+            <div class="section-content">{{ section.content }}</div>
+            {% endif %}
+
+            {% if section.content_items %}
+            <ul class="content-items">
+                {% for item in section.content_items %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if section.bullets %}
+            <div class="experience-item">
+                <ul class="experience-bullets">
+                    {% for bullet in section.bullets %}
+                    <li>{{ bullet.text }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </section>
+        {% endfor %}
+    </div>
+</body>
+</html>
