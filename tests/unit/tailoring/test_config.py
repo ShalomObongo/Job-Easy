@@ -7,8 +7,11 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from src.tailoring.config import TailoringConfig, get_tailoring_config, reset_tailoring_config
-
+from src.tailoring.config import (
+    TailoringConfig,
+    get_tailoring_config,
+    reset_tailoring_config,
+)
 
 # Keys to remove for isolated tests (prevents fallback to EXTRACTOR_* settings)
 ENV_KEYS_TO_REMOVE = [
@@ -48,7 +51,8 @@ class TestTailoringConfig:
 
     def test_default_values(self, isolated_env):
         """Test default configuration values."""
-        config = TailoringConfig()
+        assert isolated_env is None
+        config = TailoringConfig(_env_file=None)
 
         # LLM settings
         assert config.llm_provider == "openai"
@@ -69,72 +73,76 @@ class TestTailoringConfig:
 
     def test_llm_provider_validation(self, isolated_env):
         """Test LLM provider must be valid."""
-        config = TailoringConfig(llm_provider="anthropic")
+        assert isolated_env is None
+        config = TailoringConfig(_env_file=None, llm_provider="anthropic")
         assert config.llm_provider == "anthropic"
 
-        config = TailoringConfig(llm_provider="openai")
+        config = TailoringConfig(_env_file=None, llm_provider="openai")
         assert config.llm_provider == "openai"
 
         # LiteLLM supports many providers, so we allow any string
-        config = TailoringConfig(llm_provider="azure")
+        config = TailoringConfig(_env_file=None, llm_provider="azure")
         assert config.llm_provider == "azure"
 
     def test_llm_model_customization(self, isolated_env):
         """Test custom LLM model selection."""
-        config = TailoringConfig(llm_model="claude-3-opus-20240229")
+        assert isolated_env is None
+        config = TailoringConfig(_env_file=None, llm_model="claude-3-opus-20240229")
         assert config.llm_model == "claude-3-opus-20240229"
 
     def test_template_dir_path(self):
         """Test template directory as Path."""
-        config = TailoringConfig(template_dir=Path("/custom/templates"))
+        config = TailoringConfig(_env_file=None, template_dir=Path("/custom/templates"))
         assert config.template_dir == Path("/custom/templates")
 
     def test_output_dir_customization(self):
         """Test custom output directory."""
-        config = TailoringConfig(output_dir=Path("/custom/output"))
+        config = TailoringConfig(_env_file=None, output_dir=Path("/custom/output"))
         assert config.output_dir == Path("/custom/output")
 
     def test_cover_letter_word_limits(self):
         """Test cover letter word count settings."""
-        config = TailoringConfig(cover_letter_min_words=250, cover_letter_max_words=500)
+        config = TailoringConfig(
+            _env_file=None, cover_letter_min_words=250, cover_letter_max_words=500
+        )
         assert config.cover_letter_min_words == 250
         assert config.cover_letter_max_words == 500
 
     def test_cover_letter_min_words_validation(self):
         """Test minimum words must be positive."""
         with pytest.raises(ValidationError):
-            TailoringConfig(cover_letter_min_words=0)
+            TailoringConfig(_env_file=None, cover_letter_min_words=0)
 
         with pytest.raises(ValidationError):
-            TailoringConfig(cover_letter_min_words=-10)
+            TailoringConfig(_env_file=None, cover_letter_min_words=-10)
 
     def test_cover_letter_max_words_validation(self):
         """Test maximum words must be positive."""
         with pytest.raises(ValidationError):
-            TailoringConfig(cover_letter_max_words=0)
+            TailoringConfig(_env_file=None, cover_letter_max_words=0)
 
     def test_max_retries_setting(self):
         """Test LLM retry configuration."""
-        config = TailoringConfig(llm_max_retries=5)
+        config = TailoringConfig(_env_file=None, llm_max_retries=5)
         assert config.llm_max_retries == 5
 
     def test_max_retries_must_be_positive(self):
         """Test retries must be >= 0."""
         with pytest.raises(ValidationError):
-            TailoringConfig(llm_max_retries=-1)
+            TailoringConfig(_env_file=None, llm_max_retries=-1)
 
     def test_timeout_setting(self):
         """Test LLM timeout configuration."""
-        config = TailoringConfig(llm_timeout=120.0)
+        config = TailoringConfig(_env_file=None, llm_timeout=120.0)
         assert config.llm_timeout == 120.0
 
     def test_timeout_must_be_positive(self):
         """Test timeout must be positive."""
         with pytest.raises(ValidationError):
-            TailoringConfig(llm_timeout=0)
+            TailoringConfig(_env_file=None, llm_timeout=0)
 
         with pytest.raises(ValidationError):
-            TailoringConfig(llm_timeout=-30)
+            TailoringConfig(_env_file=None, llm_timeout=-30)
 
     @patch.dict(
         "os.environ",
@@ -147,7 +155,7 @@ class TestTailoringConfig:
     def test_environment_variable_override(self):
         """Test settings can be overridden via environment variables."""
         reset_tailoring_config()
-        config = TailoringConfig()
+        config = TailoringConfig(_env_file=None)
         assert config.llm_provider == "anthropic"
         assert config.llm_model == "claude-3-sonnet"
         assert config.llm_api_key == "test-api-key"
@@ -184,6 +192,7 @@ class TestConfigPaths:
     def test_template_paths_as_strings(self):
         """Test template paths can be provided as strings."""
         config = TailoringConfig(
+            _env_file=None,
             template_dir="custom/path",
             resume_template="my_resume.html",
             cover_letter_template="my_cover.html",
@@ -194,12 +203,13 @@ class TestConfigPaths:
 
     def test_output_dir_as_string(self):
         """Test output directory can be provided as string."""
-        config = TailoringConfig(output_dir="output/pdfs")
+        config = TailoringConfig(_env_file=None, output_dir="output/pdfs")
         assert config.output_dir == Path("output/pdfs")
 
     def test_get_resume_template_path(self):
         """Test getting full resume template path."""
         config = TailoringConfig(
+            _env_file=None,
             template_dir=Path("/templates"),
             resume_template="resume.html",
         )
@@ -208,6 +218,7 @@ class TestConfigPaths:
     def test_get_cover_letter_template_path(self):
         """Test getting full cover letter template path."""
         config = TailoringConfig(
+            _env_file=None,
             template_dir=Path("/templates"),
             cover_letter_template="cover.html",
         )
@@ -215,7 +226,7 @@ class TestConfigPaths:
 
     def test_get_styles_path(self):
         """Test getting styles CSS path."""
-        config = TailoringConfig(template_dir=Path("/templates"))
+        config = TailoringConfig(_env_file=None, template_dir=Path("/templates"))
         assert config.get_styles_path() == Path("/templates/styles.css")
 
 
@@ -228,6 +239,7 @@ class TestExtractorFallback:
 
     def test_falls_back_to_extractor_settings(self, isolated_env):
         """Test that config falls back to EXTRACTOR_LLM_* when TAILORING_* not set."""
+        assert isolated_env is None
         # Set only EXTRACTOR_* env vars
         os.environ["EXTRACTOR_LLM_PROVIDER"] = "anthropic"
         os.environ["EXTRACTOR_LLM_MODEL"] = "claude-sonnet-4-20250514"
@@ -235,7 +247,7 @@ class TestExtractorFallback:
         os.environ["EXTRACTOR_LLM_BASE_URL"] = "http://localhost:8000/v1"
 
         reset_tailoring_config()
-        config = TailoringConfig()
+        config = TailoringConfig(_env_file=None)
 
         assert config.llm_provider == "anthropic"
         assert config.llm_model == "claude-sonnet-4-20250514"
@@ -244,6 +256,7 @@ class TestExtractorFallback:
 
     def test_tailoring_settings_override_extractor(self, isolated_env):
         """Test that TAILORING_* settings take precedence over EXTRACTOR_*."""
+        assert isolated_env is None
         # Set both TAILORING_* and EXTRACTOR_* env vars
         os.environ["TAILORING_LLM_PROVIDER"] = "openai"
         os.environ["TAILORING_LLM_MODEL"] = "gpt-4o"
@@ -251,7 +264,7 @@ class TestExtractorFallback:
         os.environ["EXTRACTOR_LLM_MODEL"] = "claude-sonnet-4-20250514"
 
         reset_tailoring_config()
-        config = TailoringConfig()
+        config = TailoringConfig(_env_file=None)
 
         assert config.llm_provider == "openai"
         assert config.llm_model == "gpt-4o"

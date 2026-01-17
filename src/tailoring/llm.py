@@ -49,6 +49,25 @@ class TailoringLLM:
             config: Optional TailoringConfig. Uses global config if not provided.
         """
         self.config = config or get_tailoring_config()
+        self._setup_provider_env()
+
+    def _setup_provider_env(self) -> None:
+        """Set up provider-specific environment variables.
+
+        Some providers (like Anthropic) require environment variables for
+        custom base URLs rather than passing them as parameters.
+        """
+        import os
+
+        if self.config.llm_base_url and self.config.llm_provider == "anthropic":
+            # Anthropic needs ANTHROPIC_BASE_URL environment variable
+            # Strip /v1 suffix if present since Anthropic SDK adds it
+            base_url = self.config.llm_base_url.rstrip("/")
+            if base_url.endswith("/v1"):
+                base_url = base_url[:-3]
+            os.environ["ANTHROPIC_BASE_URL"] = base_url
+            if self.config.llm_api_key:
+                os.environ["ANTHROPIC_API_KEY"] = self.config.llm_api_key
 
     def _get_model_name(self) -> str:
         """Get the model name formatted for LiteLLM.
@@ -56,7 +75,21 @@ class TailoringLLM:
         Returns:
             Model name with provider prefix if needed.
         """
-        # OpenAI models don't need a prefix
+        # For Anthropic provider with custom base URL, use anthropic/ prefix
+        if self.config.llm_provider == "anthropic":
+            if "/" in self.config.llm_model:
+                return self.config.llm_model
+            return f"anthropic/{self.config.llm_model}"
+
+        # For custom base URLs (local models, proxies), always use openai/ prefix
+        # so LiteLLM routes to the OpenAI-compatible endpoint
+        if self.config.llm_base_url:
+            # If model already has a prefix (e.g., groq/openai/...), use as-is
+            if "/" in self.config.llm_model:
+                return self.config.llm_model
+            return f"openai/{self.config.llm_model}"
+
+        # For standard OpenAI API (no custom base URL), no prefix needed
         if self.config.llm_provider == "openai":
             return self.config.llm_model
 
@@ -111,7 +144,10 @@ class TailoringLLM:
             except Exception as e:
                 last_error = e
                 if attempt < self.config.llm_max_retries:
-                    wait_time = 2**attempt  # Exponential backoff
+                    # Use longer base wait for rate limits (common with Groq free tier)
+                    is_rate_limit = "rate_limit" in str(e).lower() or "429" in str(e)
+                    base_wait = 8 if is_rate_limit else 2
+                    wait_time = base_wait * (attempt + 1)  # Linear backoff for rate limits
                     logger.warning(
                         f"LLM call failed (attempt {attempt + 1}), retrying in {wait_time}s: {e}"
                     )
@@ -161,7 +197,10 @@ class TailoringLLM:
             except Exception as e:
                 last_error = e
                 if attempt < self.config.llm_max_retries:
-                    wait_time = 2**attempt
+                    # Use longer base wait for rate limits (common with Groq free tier)
+                    is_rate_limit = "rate_limit" in str(e).lower() or "429" in str(e)
+                    base_wait = 8 if is_rate_limit else 2
+                    wait_time = base_wait * (attempt + 1)  # Linear backoff for rate limits
                     logger.warning(
                         f"LLM call failed (attempt {attempt + 1}), retrying in {wait_time}s: {e}"
                     )
@@ -194,7 +233,9 @@ class TailoringLLM:
         if self.config.llm_api_key:
             kwargs["api_key"] = self.config.llm_api_key
 
-        if self.config.llm_base_url:
+        # For Anthropic, base_url is set via env var in _setup_provider_env()
+        # For other providers, pass base_url directly
+        if self.config.llm_base_url and self.config.llm_provider != "anthropic":
             kwargs["base_url"] = self.config.llm_base_url
 
         if response_format:
@@ -215,7 +256,23 @@ class TailoringLLM:
         Raises:
             LLMError: If parsing or validation fails.
         """
-        content = response.choices[0].message.content
+        message = response.choices[0].message
+        content = getattr(message, "content", None)
+
+        # Some providers return structured output as tool call arguments with no content.
+        if content is None:
+            tool_calls = getattr(message, "tool_calls", None) or []
+            if tool_calls:
+                function = getattr(tool_calls[0], "function", None)
+                arguments = getattr(function, "arguments", None)
+                if isinstance(arguments, str) and arguments.strip():
+                    content = arguments
+
+        if content is None:
+            raise LLMError("LLM returned no content to parse.")
+
+        # Strip markdown code fences if present (common with some models)
+        content = self._extract_json_from_response(content)
 
         try:
             return output_model.model_validate_json(content)
@@ -225,3 +282,57 @@ class TailoringLLM:
             ) from e
         except Exception as e:
             raise LLMError(f"Failed to parse LLM response as JSON: {e}", e) from e
+
+    def _extract_json_from_response(self, content: str) -> str:
+        """Extract JSON from response, handling markdown code fences.
+
+        Args:
+            content: Raw response content.
+
+        Returns:
+            Extracted JSON string.
+        """
+        content = content.strip()
+
+        # Remove markdown code fences (```json ... ``` or ``` ... ```)
+        if content.startswith("```"):
+            # Find the end of the first line (language specifier)
+            first_newline = content.find("\n")
+            if first_newline != -1:
+                content = content[first_newline + 1 :]
+
+            # Remove trailing ```
+            if content.endswith("```"):
+                content = content[:-3]
+
+            content = content.strip()
+
+        if content.startswith("{") or content.startswith("["):
+            return content
+
+        def extract_balanced(text: str, open_char: str, close_char: str) -> str | None:
+            start = text.find(open_char)
+            if start == -1:
+                return None
+
+            depth = 0
+            for idx in range(start, len(text)):
+                ch = text[idx]
+                if ch == open_char:
+                    depth += 1
+                elif ch == close_char:
+                    depth -= 1
+                    if depth == 0:
+                        return text[start : idx + 1].strip()
+            return None
+
+        # Some models prepend non-JSON text (reasoning). Extract the first JSON object/array.
+        extracted = extract_balanced(content, "{", "}")
+        if extracted is not None:
+            return extracted
+
+        extracted = extract_balanced(content, "[", "]")
+        if extracted is not None:
+            return extracted
+
+        return content

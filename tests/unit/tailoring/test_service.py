@@ -6,7 +6,7 @@ error handling, and output artifacts.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -15,7 +15,6 @@ from src.scoring.models import Education, UserProfile, WorkExperience
 from src.tailoring.config import TailoringConfig, reset_tailoring_config
 from src.tailoring.models import (
     CoverLetter,
-    DocReviewPacket,
     EvidenceMapping,
     KeywordMatch,
     TailoredBullet,
@@ -117,7 +116,9 @@ def mock_tailored_resume():
                 title="Experience",
                 content="",
                 bullets=[
-                    TailoredBullet(text="Led Python development", keywords_used=["Python"])
+                    TailoredBullet(
+                        text="Led Python development", keywords_used=["Python"]
+                    )
                 ],
             )
         ],
@@ -190,9 +191,7 @@ class TestFullTailoringPipeline:
                 patch(
                     "src.tailoring.service.ResumeTailoringService"
                 ) as mock_resume_service,
-                patch(
-                    "src.tailoring.service.CoverLetterService"
-                ) as mock_cover_service,
+                patch("src.tailoring.service.CoverLetterService") as mock_cover_service,
             ):
                 # Set up mocks
                 mock_plan_service.return_value.generate_plan = AsyncMock(
@@ -206,7 +205,9 @@ class TestFullTailoringPipeline:
                 )
 
                 service = TailoringService(config=config)
-                result = await service.tailor(sample_user_profile, sample_job_description)
+                result = await service.tailor(
+                    sample_user_profile, sample_job_description
+                )
 
                 assert isinstance(result, TailoringResult)
                 assert result.success
@@ -322,9 +323,7 @@ class TestOutputArtifacts:
                 patch(
                     "src.tailoring.service.ResumeTailoringService"
                 ) as mock_resume_service,
-                patch(
-                    "src.tailoring.service.CoverLetterService"
-                ) as mock_cover_service,
+                patch("src.tailoring.service.CoverLetterService") as mock_cover_service,
             ):
                 mock_plan_service.return_value.generate_plan = AsyncMock(
                     return_value=mock_tailoring_plan
@@ -337,7 +336,9 @@ class TestOutputArtifacts:
                 )
 
                 service = TailoringService(config=config)
-                result = await service.tailor(sample_user_profile, sample_job_description)
+                result = await service.tailor(
+                    sample_user_profile, sample_job_description
+                )
 
                 assert result.success
                 assert result.resume_path is not None
@@ -363,9 +364,7 @@ class TestOutputArtifacts:
                 patch(
                     "src.tailoring.service.ResumeTailoringService"
                 ) as mock_resume_service,
-                patch(
-                    "src.tailoring.service.CoverLetterService"
-                ) as mock_cover_service,
+                patch("src.tailoring.service.CoverLetterService") as mock_cover_service,
             ):
                 mock_plan_service.return_value.generate_plan = AsyncMock(
                     return_value=mock_tailoring_plan
@@ -378,7 +377,9 @@ class TestOutputArtifacts:
                 )
 
                 service = TailoringService(config=config)
-                result = await service.tailor(sample_user_profile, sample_job_description)
+                result = await service.tailor(
+                    sample_user_profile, sample_job_description
+                )
 
                 assert result.review_packet is not None
                 assert result.review_packet.resume_path is not None

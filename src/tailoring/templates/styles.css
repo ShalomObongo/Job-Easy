@@ -87,6 +87,9 @@ body {
     border-bottom: 1px solid #bdc3c7;
     padding-bottom: 4px;
     margin-bottom: 10px;
+    /* Avoid orphaning the heading at the bottom of a page. */
+    break-after: avoid-page;
+    page-break-after: avoid;
 }
 
 .resume-summary {

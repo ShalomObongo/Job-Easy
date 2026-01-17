@@ -16,7 +16,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def _get_env_with_fallback(tailoring_key: str, extractor_key: str, default: str) -> str:
     """Get env var with fallback from TAILORING_ to EXTRACTOR_ prefix."""
-    return os.getenv(f"TAILORING_{tailoring_key}") or os.getenv(extractor_key) or default
+    return (
+        os.getenv(f"TAILORING_{tailoring_key}") or os.getenv(extractor_key) or default
+    )
 
 
 class TailoringConfig(BaseSettings):

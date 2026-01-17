@@ -1,6 +1,7 @@
 """Main entry point for Job-Easy application."""
 
 import argparse
+import asyncio
 import sys
 
 from src import __version__
@@ -99,8 +100,24 @@ def main(args: list[str] | None = None) -> int:
             print("Error: URL is required for single mode", file=sys.stderr)
             return 1
         logger.info(f"Processing job URL: {parsed.url}")
-        # TODO: Implement single job processing
-        print(f"Would process job: {parsed.url}")
+        from src.runner import service as runner_service
+
+        result = asyncio.run(
+            runner_service.run_single_job(parsed.url, settings=settings)
+        )
+        print(f"Status: {result.status.value}")
+        if result.errors:
+            print("Errors:")
+            for err in result.errors:
+                print(f"- {err}")
+        if result.notes:
+            print("Notes:")
+            for note in result.notes:
+                print(f"- {note}")
+        if result.proof_text:
+            print(f"Proof: {result.proof_text}")
+
+        return 0 if result.success else 1
 
     elif parsed.mode == "autonomous":
         logger.info("Starting autonomous mode")

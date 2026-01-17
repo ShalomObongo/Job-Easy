@@ -226,6 +226,24 @@ class TrackerRepository:
             )
             await conn.commit()
 
+    async def update_artifacts(
+        self,
+        fingerprint: str,
+        resume_artifact_path: str | None = None,
+        cover_letter_artifact_path: str | None = None,
+    ) -> None:
+        """Update resume/cover letter artifact paths for a record."""
+        async with self._get_connection() as conn:
+            await conn.execute(
+                """
+                UPDATE tracker
+                SET resume_artifact_path = ?, cover_letter_artifact_path = ?
+                WHERE fingerprint = ?
+                """,
+                (resume_artifact_path, cover_letter_artifact_path, fingerprint),
+            )
+            await conn.commit()
+
     async def list_recent(
         self,
         limit: int = 10,

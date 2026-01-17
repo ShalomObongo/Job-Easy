@@ -4,12 +4,34 @@ These tests require LLM API keys and make real API calls.
 Mark with @pytest.mark.integration to skip in CI without API keys.
 """
 
+import os
+
 import pytest
 
 from src.extractor.models import JobDescription
 from src.scoring.models import Education, UserProfile, WorkExperience
-from src.tailoring.config import TailoringConfig, reset_tailoring_config
+from src.tailoring.config import reset_tailoring_config
 from src.tailoring.plan import TailoringPlanService
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not any(
+            os.getenv(key)
+            for key in [
+                "TAILORING_LLM_API_KEY",
+                "EXTRACTOR_LLM_API_KEY",
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "BROWSER_USE_API_KEY",
+                "LLM_API_KEY",
+                "TAILORING_LLM_BASE_URL",
+                "EXTRACTOR_LLM_BASE_URL",
+            ]
+        ),
+        reason="No LLM credentials/base URL configured for tailoring integration tests",
+    ),
+]
 
 
 @pytest.fixture
@@ -79,7 +101,14 @@ def integration_user_profile():
                 start_date="2021-03-01",
                 end_date=None,
                 description="Lead backend development for the payments platform. Designed and implemented microservices handling 50K+ transactions daily. Mentored 3 junior developers and established code review practices.",
-                skills_used=["Python", "FastAPI", "PostgreSQL", "Redis", "Docker", "AWS"],
+                skills_used=[
+                    "Python",
+                    "FastAPI",
+                    "PostgreSQL",
+                    "Redis",
+                    "Docker",
+                    "AWS",
+                ],
             ),
             WorkExperience(
                 company="WebDev Agency",
@@ -187,9 +216,6 @@ class TestPlanGenerationIntegration:
         )
 
         # Go is preferred but user doesn't have it
-        go_warnings = [
-            c for c in plan.unsupported_claims if "go" in c.requirement.lower()
-        ]
         # Should flag Go as missing (it's preferred, not required)
         # Note: This may or may not be flagged depending on LLM interpretation
         # So we just verify the plan doesn't fabricate Go experience
@@ -214,6 +240,6 @@ class TestPlanGenerationIntegration:
         # Evidence should only come from actual user companies
         valid_companies = {"ScaleUp Technologies", "WebDev Agency", "StartupXYZ"}
         for mapping in plan.evidence_mappings:
-            assert (
-                mapping.source_company in valid_companies
-            ), f"Fabricated company: {mapping.source_company}"
+            assert mapping.source_company in valid_companies, (
+                f"Fabricated company: {mapping.source_company}"
+            )

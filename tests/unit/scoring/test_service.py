@@ -118,6 +118,74 @@ class TestScoreSkills:
         assert must_matched == []
         assert must_missing == []
 
+    def test_score_skills_uses_work_history_skills_used(self):
+        """Skills used in work history should count for matching."""
+        from datetime import date
+
+        from src.extractor.models import JobDescription
+        from src.scoring.models import UserProfile, WorkExperience
+        from src.scoring.service import FitScoringService
+
+        job = JobDescription(
+            company="ExampleCo",
+            role_title="Engineer",
+            job_url="https://example.com/jobs/123",
+            required_skills=["docker"],
+        )
+        profile = UserProfile(
+            name="Jane Doe",
+            email="jane@example.com",
+            location="Remote",
+            skills=[],
+            years_of_experience=3,
+            work_history=[
+                WorkExperience(
+                    company="ExampleCo",
+                    title="Engineer",
+                    start_date=date(2024, 1, 1),
+                    end_date=None,
+                    description="Built services.",
+                    skills_used=["Docker"],
+                )
+            ],
+        )
+
+        must_score, must_matched, must_missing, *_ = FitScoringService().score_skills(
+            job, profile
+        )
+
+        assert must_score == 1.0
+        assert must_matched == ["docker"]
+        assert must_missing == []
+
+    def test_score_skills_infers_web_fundamentals_from_react(self):
+        """React should imply JavaScript/HTML/CSS for fit scoring."""
+        from src.extractor.models import JobDescription
+        from src.scoring.models import UserProfile
+        from src.scoring.service import FitScoringService
+
+        job = JobDescription(
+            company="ExampleCo",
+            role_title="Frontend Engineer",
+            job_url="https://example.com/jobs/123",
+            required_skills=["javascript", "html", "css"],
+        )
+        profile = UserProfile(
+            name="Jane Doe",
+            email="jane@example.com",
+            location="Remote",
+            skills=["React"],
+            years_of_experience=3,
+        )
+
+        must_score, must_matched, must_missing, *_ = FitScoringService().score_skills(
+            job, profile
+        )
+
+        assert must_score == 1.0
+        assert must_matched == ["javascript", "html", "css"]
+        assert must_missing == []
+
 
 class TestPreferredSkills:
     """Test preferred skill scoring logic."""

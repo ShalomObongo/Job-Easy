@@ -4,6 +4,7 @@ These tests require LLM API keys and make real API calls.
 Mark with @pytest.mark.integration to skip in CI without API keys.
 """
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -13,6 +14,26 @@ from src.extractor.models import JobDescription
 from src.scoring.models import Education, UserProfile, WorkExperience
 from src.tailoring import TailoringConfig, TailoringService
 from src.tailoring.config import reset_tailoring_config
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not any(
+            os.getenv(key)
+            for key in [
+                "TAILORING_LLM_API_KEY",
+                "EXTRACTOR_LLM_API_KEY",
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "BROWSER_USE_API_KEY",
+                "LLM_API_KEY",
+                "TAILORING_LLM_BASE_URL",
+                "EXTRACTOR_LLM_BASE_URL",
+            ]
+        ),
+        reason="No LLM credentials/base URL configured for tailoring integration tests",
+    ),
+]
 
 
 @pytest.fixture
@@ -75,7 +96,14 @@ def integration_user_profile():
                 start_date="2021-03-01",
                 end_date=None,
                 description="Lead backend development for the payments platform. Designed microservices handling 50K+ transactions daily.",
-                skills_used=["Python", "FastAPI", "PostgreSQL", "Redis", "Docker", "AWS"],
+                skills_used=[
+                    "Python",
+                    "FastAPI",
+                    "PostgreSQL",
+                    "Redis",
+                    "Docker",
+                    "AWS",
+                ],
             ),
             WorkExperience(
                 company="WebDev Agency",

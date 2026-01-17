@@ -12,6 +12,25 @@
 
 ## Completed Tracks
 
+### [track_20260116_174354] Dynamic Application Runner (Any Job Link) ✅
+- **Type**: Feature
+- **Status**: Completed
+- **Completed**: 2026-01-17
+- **Epic Reference**: E4 (Runner) + E6 (HITL) + E5 (Domain policy)
+- **Spec**: [spec.md](./tracks/track_20260116_174354/spec.md)
+- **Plan**: [plan.md](./tracks/track_20260116_174354/plan.md)
+
+Dynamic, best-effort application runner that handles any job-related URL with multi-step form filling, HITL confirmation gates, Q&A bank learning, and domain policy enforcement.
+
+**Deliverables:**
+- `/src/runner/models.py` - ApplicationRunResult and step summary models
+- `/src/runner/agent.py` - Browser Use agent factory with HITL tools
+- `/src/runner/service.py` - Single-job pipeline orchestration
+- `/src/runner/qa_bank.py` - Q&A bank persistence for learned answers
+- `/src/runner/domains.py` - Blocklist-first domain policy utilities
+- `/src/hitl/tools.py` - Reusable HITL prompt tools (yes/no, free text, YES-to-submit, OTP)
+- Unit tests + integration test stubs
+
 ### [track_20260116_022216] Tailoring & Document Generation ✅
 - **Type**: Feature
 - **Status**: Completed

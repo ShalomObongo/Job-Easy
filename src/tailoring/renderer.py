@@ -70,9 +70,7 @@ class PDFRenderer:
             return styles_path.read_text()
         return ""
 
-    def _prepare_resume_sections(
-        self, sections: list[Any]
-    ) -> list[dict[str, Any]]:
+    def _prepare_resume_sections(self, sections: list[Any]) -> list[dict[str, Any]]:
         """Prepare resume sections for rendering.
 
         Adds derived fields that help templates render list-like content
@@ -249,8 +247,12 @@ class PDFRenderer:
             name_lower = str(section_dict.get("name") or "").strip().lower()
             title_lower = str(section_dict.get("title") or "").strip().lower()
 
-            section_dict["is_experience"] = "experience" in name_lower or "experience" in title_lower
-            section_dict["is_projects"] = "project" in name_lower or "project" in title_lower
+            section_dict["is_experience"] = (
+                "experience" in name_lower or "experience" in title_lower
+            )
+            section_dict["is_projects"] = (
+                "project" in name_lower or "project" in title_lower
+            )
             section_dict["is_skills"] = "skill" in name_lower or "skill" in title_lower
 
             content_lines: list[str] = []
@@ -299,7 +301,9 @@ class PDFRenderer:
             # Derive structured entries for experience/projects.
             entries: list[dict[str, Any]] = []
             bullets = section_dict.get("bullets") or []
-            if (section_dict["is_experience"] or section_dict["is_projects"]) and bullets:
+            if (
+                section_dict["is_experience"] or section_dict["is_projects"]
+            ) and bullets:
                 grouped: dict[tuple[str | None, str | None], dict[str, Any]] = {}
                 order: list[tuple[str | None, str | None]] = []
 
@@ -329,7 +333,9 @@ class PDFRenderer:
                             if parsed["dates"] and not entry.get("dates"):
                                 entry["dates"] = parsed["dates"]
 
-                            entry["bullets"].extend(split_semicolons(parsed["body"] or ""))
+                            entry["bullets"].extend(
+                                split_semicolons(parsed["body"] or "")
+                            )
                             continue
                     else:
                         parsed = parse_project_bullet(bullet_text)
@@ -345,14 +351,21 @@ class PDFRenderer:
                                 }
                                 grouped[key] = entry
                                 order.append(key)
-                            entry["bullets"].extend(split_semicolons(parsed["body"] or ""))
+                            entry["bullets"].extend(
+                                split_semicolons(parsed["body"] or "")
+                            )
                             continue
 
                     # Unparsed bullets fall back into a headerless entry.
                     key = (None, None)
                     entry = grouped.get(key)
                     if entry is None:
-                        entry = {"heading": None, "subheading": None, "dates": None, "bullets": []}
+                        entry = {
+                            "heading": None,
+                            "subheading": None,
+                            "dates": None,
+                            "bullets": [],
+                        }
                         grouped[key] = entry
                         order.append(key)
                     entry["bullets"].append(clean_line(bullet_text))

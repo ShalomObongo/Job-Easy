@@ -174,6 +174,21 @@ class TestCRUDOperations:
         assert result.proof_screenshot_path == "/path/to/proof.png"
 
     @pytest.mark.asyncio
+    async def test_update_artifacts_sets_artifact_paths(self, repo, sample_record):
+        """update_artifacts should set resume and cover letter artifact paths."""
+        await repo.insert_record(sample_record)
+
+        await repo.update_artifacts(
+            "abc123",
+            resume_artifact_path="/path/to/resume.pdf",
+            cover_letter_artifact_path="/path/to/cover.pdf",
+        )
+
+        result = await repo.get_by_fingerprint("abc123")
+        assert result.resume_artifact_path == "/path/to/resume.pdf"
+        assert result.cover_letter_artifact_path == "/path/to/cover.pdf"
+
+    @pytest.mark.asyncio
     async def test_list_recent_returns_records(self, repo, sample_record):
         """list_recent should return recent records."""
         await repo.insert_record(sample_record)

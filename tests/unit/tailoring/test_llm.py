@@ -13,7 +13,6 @@ from pydantic import BaseModel
 from src.tailoring.config import TailoringConfig, reset_tailoring_config
 from src.tailoring.llm import LLMError, TailoringLLM
 
-
 # Keys to remove for isolated tests (prevents fallback to EXTRACTOR_* settings)
 ENV_KEYS_TO_REMOVE = [
     "TAILORING_LLM_PROVIDER",
@@ -59,14 +58,17 @@ class TestTailoringLLMInitialization:
 
     def test_init_with_default_config(self, isolated_env):
         """Test initialization with default configuration."""
-        llm = TailoringLLM()
+        assert isolated_env is None
+        llm = TailoringLLM(config=TailoringConfig(_env_file=None))
         assert llm.config is not None
         assert llm.config.llm_provider == "openai"
         assert llm.config.llm_model == "gpt-4o"
 
     def test_init_with_custom_config(self, isolated_env):
         """Test initialization with custom configuration."""
+        assert isolated_env is None
         config = TailoringConfig(
+            _env_file=None,
             llm_provider="anthropic",
             llm_model="claude-3-opus",
             llm_max_retries=5,
@@ -78,13 +80,19 @@ class TestTailoringLLMInitialization:
 
     def test_model_name_formatting(self, isolated_env):
         """Test model name is formatted correctly for LiteLLM."""
-        config = TailoringConfig(llm_provider="anthropic", llm_model="claude-3-opus")
+        assert isolated_env is None
+        config = TailoringConfig(
+            _env_file=None, llm_provider="anthropic", llm_model="claude-3-opus"
+        )
         llm = TailoringLLM(config=config)
         assert llm._get_model_name() == "anthropic/claude-3-opus"
 
     def test_model_name_formatting_openai(self, isolated_env):
         """Test OpenAI model names don't need prefix."""
-        config = TailoringConfig(llm_provider="openai", llm_model="gpt-4o")
+        assert isolated_env is None
+        config = TailoringConfig(
+            _env_file=None, llm_provider="openai", llm_model="gpt-4o"
+        )
         llm = TailoringLLM(config=config)
         # OpenAI models don't need prefix
         assert llm._get_model_name() == "gpt-4o"
@@ -105,7 +113,9 @@ class TestTailoringLLMStructuredOutput:
             MagicMock(message=MagicMock(content='{"name": "test", "value": 42}'))
         ]
 
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -126,7 +136,9 @@ class TestTailoringLLMStructuredOutput:
             MagicMock(message=MagicMock(content='{"name": "result", "value": 1}'))
         ]
 
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -151,7 +163,9 @@ class TestTailoringLLMStructuredOutput:
             MagicMock(message=MagicMock(content='{"name": "test", "value": 1}'))
         ]
 
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -174,10 +188,12 @@ class TestTailoringLLMErrorHandling:
     @pytest.mark.asyncio
     async def test_raises_llm_error_on_failure(self):
         """Test that LLMError is raised when LLM call fails."""
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.side_effect = Exception("API Error")
 
-            config = TailoringConfig(llm_max_retries=0)
+            config = TailoringConfig(_env_file=None, llm_max_retries=0)
             llm = TailoringLLM(config=config)
 
             with pytest.raises(LLMError) as exc_info:
@@ -192,11 +208,11 @@ class TestTailoringLLMErrorHandling:
     async def test_raises_llm_error_on_invalid_json(self):
         """Test that LLMError is raised when response is invalid JSON."""
         mock_response = MagicMock()
-        mock_response.choices = [
-            MagicMock(message=MagicMock(content="not valid json"))
-        ]
+        mock_response.choices = [MagicMock(message=MagicMock(content="not valid json"))]
 
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -217,7 +233,9 @@ class TestTailoringLLMErrorHandling:
             MagicMock(message=MagicMock(content='{"name": "test"}'))
         ]
 
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -239,17 +257,19 @@ class TestTailoringLLMErrorHandling:
 
         call_count = 0
 
-        async def side_effect(*args, **kwargs):
+        async def side_effect(*_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
                 raise Exception("Transient error")
             return mock_response
 
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.side_effect = side_effect
 
-            config = TailoringConfig(llm_max_retries=3)
+            config = TailoringConfig(_env_file=None, llm_max_retries=3)
             llm = TailoringLLM(config=config)
 
             result = await llm.generate_structured(
@@ -276,7 +296,9 @@ class TestTailoringLLMTextGeneration:
             MagicMock(message=MagicMock(content="Generated text response"))
         ]
 
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -289,11 +311,11 @@ class TestTailoringLLMTextGeneration:
     async def test_generate_text_with_system_prompt(self):
         """Test that system prompt is included for text generation."""
         mock_response = MagicMock()
-        mock_response.choices = [
-            MagicMock(message=MagicMock(content="Response"))
-        ]
+        mock_response.choices = [MagicMock(message=MagicMock(content="Response"))]
 
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -323,10 +345,12 @@ class TestTailoringLLMConfiguration:
             MagicMock(message=MagicMock(content='{"name": "test", "value": 1}'))
         ]
 
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.return_value = mock_response
 
-            config = TailoringConfig(llm_timeout=120.0)
+            config = TailoringConfig(_env_file=None, llm_timeout=120.0)
             llm = TailoringLLM(config=config)
 
             await llm.generate_structured(
@@ -340,15 +364,18 @@ class TestTailoringLLMConfiguration:
     @pytest.mark.asyncio
     async def test_api_key_is_passed_when_set(self, isolated_env):
         """Test that API key is passed to LiteLLM when configured."""
+        assert isolated_env is None
         mock_response = MagicMock()
         mock_response.choices = [
             MagicMock(message=MagicMock(content='{"name": "test", "value": 1}'))
         ]
 
-        with patch("src.tailoring.llm.acompletion", new_callable=AsyncMock) as mock_completion:
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
             mock_completion.return_value = mock_response
 
-            config = TailoringConfig(llm_api_key="test-api-key")
+            config = TailoringConfig(_env_file=None, llm_api_key="test-api-key")
             llm = TailoringLLM(config=config)
 
             await llm.generate_structured(

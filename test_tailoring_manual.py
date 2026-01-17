@@ -1,12 +1,14 @@
 # test_tailoring_manual.py
 import asyncio
 import json
-import yaml
 from pathlib import Path
+
+import yaml
 
 from src.extractor.models import JobDescription
 from src.scoring.models import UserProfile
 from src.tailoring import TailoringService, get_tailoring_config
+
 
 async def main():
     # Show current config
@@ -46,7 +48,7 @@ async def main():
         print(f"Error: {result.error}")
         return
 
-    print(f"\n=== Results ===")
+    print("\n=== Results ===")
     print(f"Resume PDF: {result.resume_path}")
     print(f"Cover Letter PDF: {result.cover_letter_path}")
 
@@ -66,10 +68,11 @@ async def main():
         print(result.cover_letter.full_text[:500] + "...")
 
     if result.review_packet:
-        print(f"\n=== Review Packet ===")
+        print("\n=== Review Packet ===")
         print(f"Changes: {len(result.review_packet.changes_summary)} items")
         for change in result.review_packet.changes_summary[:3]:
             print(f"  - {change}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

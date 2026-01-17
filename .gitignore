@@ -97,3 +97,6 @@ credentials.json
 # Logs
 *.log
 logs/
+
+# Q&A Bank (user-specific learned answers)
+data/qa_bank.json

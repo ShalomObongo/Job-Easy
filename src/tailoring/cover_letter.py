@@ -36,6 +36,8 @@ class CoverLetterLLMResponse(BaseModel):
 
 COVER_LETTER_SYSTEM_PROMPT = """You are an expert cover letter writer. Your job is to create a compelling, personalized cover letter for a job application.
 
+**CRITICAL: You MUST respond with valid JSON matching the EXACT schema below. Use the EXACT field names shown. No variations allowed.**
+
 STRUCTURE:
 1. **Opening** (1 paragraph): Hook that mentions the specific role and company, shows enthusiasm
 2. **Body** (2-3 paragraphs): Top 2-3 qualifications with concrete evidence, map accomplishments to job requirements
@@ -56,6 +58,45 @@ WRITING TIPS:
 - Show you understand the company's needs
 - Connect your experience directly to job requirements
 - End with confidence but not arrogance
+
+===== REQUIRED JSON SCHEMA =====
+You MUST return a JSON object with these EXACT fields:
+
+{{
+  "opening": "Dear Hiring Manager,\\n\\nI am excited to apply for the Software Engineer position at TechCorp. With over 5 years of experience building scalable applications and a proven track record of delivering high-impact solutions, I am confident I can contribute to your team's success.",
+  "body": "In my current role at StartupXYZ, I led the development of a microservices architecture that improved system reliability by 99.9% and reduced deployment time by 60%. This experience directly aligns with your need for engineers who can build robust, scalable systems.\\n\\nAdditionally, my expertise in Python and React has enabled me to deliver full-stack solutions that serve over 100,000 daily active users. I am particularly drawn to TechCorp's mission of democratizing technology access, which resonates with my passion for building user-centric products.",
+  "closing": "I would welcome the opportunity to discuss how my experience in distributed systems and my passion for clean, maintainable code can contribute to TechCorp's continued growth. Thank you for considering my application.\\n\\nSincerely,\\nJohn Doe",
+  "key_qualifications": [
+    "5+ years building scalable applications",
+    "Expertise in Python and React",
+    "Led microservices architecture improving reliability to 99.9%"
+  ]
+}}
+
+===== FIELD REQUIREMENTS =====
+
+For opening (REQUIRED - string):
+- The opening paragraph that hooks the reader
+- Include the role and company name
+- Show genuine enthusiasm
+- 2-4 sentences
+
+For body (REQUIRED - string):
+- The main body paragraphs (2-3 paragraphs separated by \\n\\n)
+- Connect your qualifications to job requirements
+- Use specific metrics and achievements from the profile
+- Do NOT repeat the opening hook or company name excessively
+
+For closing (REQUIRED - string):
+- Final paragraph with call to action
+- Express enthusiasm for the opportunity
+- Include professional sign-off
+
+For key_qualifications (REQUIRED - array of strings):
+- List of 3-5 key qualifications highlighted in the letter
+- Brief phrases, not full sentences
+
+===== RESPOND WITH ONLY THE JSON OBJECT. NO MARKDOWN FENCES, NO EXPLANATORY TEXT. =====
 """
 
 
@@ -140,8 +181,13 @@ class CoverLetterService:
                 system_prompt=system_prompt,
             )
 
-            full_text = f"{response.opening}\n\n{response.body}\n\n{response.closing}"
-            word_count = len(full_text.split())
+            opening = response.opening.strip()
+            body = response.body.strip()
+            closing = response.closing.strip()
+
+            opening = self._ensure_company_mentioned(opening, body, closing, job)
+            full_text = self._format_full_text(opening, body, closing)
+            word_count = self._count_words(full_text)
 
             if min_words <= word_count <= max_words:
                 break
@@ -175,10 +221,30 @@ Rules:
         if response is None:
             raise RuntimeError("Cover letter generation failed unexpectedly.")
 
+        # If the model still missed the range after the revision pass, apply a
+        # deterministic adjustment so downstream consumers/tests aren't flaky.
+        body = self._pad_body_to_min_words(
+            opening=opening,
+            body=body,
+            closing=closing,
+            profile=profile,
+            job=job,
+            plan=plan,
+            min_words=min_words,
+        )
+        body = self._trim_body_to_max_words(
+            opening=opening,
+            body=body,
+            closing=closing,
+            max_words=max_words,
+        )
+        full_text = self._format_full_text(opening, body, closing)
+        word_count = self._count_words(full_text)
+
         return CoverLetter(
-            opening=response.opening,
-            body=response.body,
-            closing=response.closing,
+            opening=opening,
+            body=body,
+            closing=closing,
             full_text=full_text,
             word_count=word_count,
             target_job_url=job.job_url,
@@ -186,6 +252,144 @@ Rules:
             target_role=job.role_title,
             key_qualifications=response.key_qualifications,
         )
+
+    def _ensure_company_mentioned(
+        self,
+        opening: str,
+        body: str,
+        closing: str,
+        job: JobDescription,
+    ) -> str:
+        """Ensure the company name appears somewhere in the letter.
+
+        Some models occasionally omit the company despite instructions; add a
+        lightweight sentence to the opening in that case.
+        """
+        company = (job.company or "").strip()
+        if not company:
+            return opening
+
+        combined = f"{opening} {body} {closing}"
+        if company in combined:
+            return opening
+
+        role = (job.role_title or "this role").strip() or "this role"
+        sentence = f"I'm excited to apply for the {role} position at {company}."
+        opening = opening.strip()
+        if not opening:
+            return sentence
+        if opening.endswith((".", "!", "?")):
+            return f"{opening} {sentence}"
+        return f"{opening}. {sentence}"
+
+    def _format_full_text(self, opening: str, body: str, closing: str) -> str:
+        """Format the complete cover letter text consistently."""
+        return f"{opening}\n\n{body}\n\n{closing}".strip()
+
+    def _count_words(self, text: str) -> int:
+        """Count words in a text (whitespace-delimited)."""
+        return len(text.split())
+
+    def _trim_text_to_words(self, text: str, max_words: int) -> str:
+        """Trim a string to at most `max_words` words."""
+        if max_words <= 0:
+            return ""
+        words = text.split()
+        if len(words) <= max_words:
+            return text
+        return " ".join(words[:max_words]).strip()
+
+    def _trim_body_to_max_words(
+        self,
+        *,
+        opening: str,
+        body: str,
+        closing: str,
+        max_words: int,
+    ) -> str:
+        """Trim body text so total letter word-count stays under max_words."""
+        if max_words <= 0:
+            return ""
+
+        non_body_words = self._count_words(opening) + self._count_words(closing)
+        allowed_body_words = max_words - non_body_words
+        if allowed_body_words <= 0:
+            return ""
+        return self._trim_text_to_words(body, allowed_body_words)
+
+    def _pad_body_to_min_words(
+        self,
+        *,
+        opening: str,
+        body: str,
+        closing: str,
+        profile: UserProfile,
+        job: JobDescription,
+        plan: TailoringPlan,
+        min_words: int,
+    ) -> str:
+        """Pad body text (without fabricating) until the letter meets min_words."""
+        if min_words <= 0:
+            return body
+
+        current_body = body.strip()
+        if (
+            self._count_words(self._format_full_text(opening, current_body, closing))
+            >= min_words
+        ):
+            return current_body
+
+        candidates: list[str] = []
+
+        # Prefer verbatim work history summaries from the profile (truthful source).
+        for exp in profile.work_history[:3]:
+            desc = (exp.description or "").strip()
+            if not desc:
+                continue
+            if desc.endswith((".", "!", "?")):
+                desc = desc[:-1]
+            candidates.append(f"In my role as {exp.title} at {exp.company}, {desc}.")
+
+        # Use evidence mappings as short supporting context (generated but grounded in the profile).
+        for mapping in plan.evidence_mappings[:3]:
+            evidence = (mapping.evidence or "").strip()
+            if not evidence:
+                continue
+            if not evidence.endswith((".", "!", "?")):
+                evidence += "."
+            candidates.append(evidence)
+
+        # Add a lightweight skills alignment line.
+        job_skills = [s.strip() for s in (job.required_skills or []) if s.strip()]
+        profile_skills = [s.strip() for s in (profile.skills or []) if s.strip()]
+        overlap = {
+            s.lower(): s
+            for s in job_skills
+            if s.lower() in {p.lower() for p in profile_skills}
+        }
+        overlap_list = list(overlap.values())
+        if overlap_list:
+            skills_str = ", ".join(overlap_list[:8])
+            candidates.append(
+                f"Technically, I've worked extensively with {skills_str}, and I'm comfortable applying these skills to the responsibilities outlined for this role."
+            )
+
+        for paragraph in candidates:
+            if (
+                self._count_words(
+                    self._format_full_text(opening, current_body, closing)
+                )
+                >= min_words
+            ):
+                break
+            paragraph = paragraph.strip()
+            if not paragraph:
+                continue
+            current_body = (
+                f"{current_body}\n\n{paragraph}" if current_body else paragraph
+            ).strip()
+
+        return current_body
 
     def _build_prompt(
         self,

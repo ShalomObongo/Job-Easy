@@ -146,7 +146,9 @@ class TestTailoringPlan:
             company="Acme Corp",
             role_title="Senior Developer",
             keyword_matches=[
-                KeywordMatch(job_keyword="Python", user_skill="Python 3.x", confidence=0.95)
+                KeywordMatch(
+                    job_keyword="Python", user_skill="Python 3.x", confidence=0.95
+                )
             ],
             evidence_mappings=[
                 EvidenceMapping(
@@ -337,7 +339,11 @@ class TestCoverLetter:
             target_job_url="https://example.com/job/123",
             target_company="Acme Corp",
             target_role="Senior Developer",
-            key_qualifications=["8 years Python", "Team leadership", "50% deployment improvement"],
+            key_qualifications=[
+                "8 years Python",
+                "Team leadership",
+                "50% deployment improvement",
+            ],
         )
         assert cover.word_count == 350
         assert cover.target_company == "Acme Corp"

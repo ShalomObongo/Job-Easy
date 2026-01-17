@@ -39,6 +39,13 @@ class TestSkillsMatchExact:
 
         assert skills_match("JavaScript", "JS", fuzzy=False) is True
         assert skills_match("Python", "Python3", fuzzy=False) is True
+        assert (
+            skills_match(
+                "React.js (or modern client-side framework)", "React", fuzzy=False
+            )
+            is True
+        )
+        assert skills_match("Unit/integration testing", "Testing", fuzzy=False) is True
 
     def test_skills_match_exact_no_match_returns_false(self):
         """Exact match should return False when skills don't match."""
@@ -125,3 +132,18 @@ class TestFindMatchingSkills:
 
         assert matched_exact == []
         assert missing_exact == ["postgresql"]
+
+
+class TestExpandSkills:
+    """Test expand_skills."""
+
+    def test_expand_skills_infers_web_fundamentals_from_react(self):
+        """React should imply JavaScript/HTML/CSS for fit scoring."""
+        from src.scoring.matchers import expand_skills
+
+        expanded = expand_skills(["React"])
+
+        assert "react" in expanded
+        assert "javascript" in expanded
+        assert "html" in expanded
+        assert "css" in expanded

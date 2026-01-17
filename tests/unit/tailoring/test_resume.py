@@ -284,9 +284,13 @@ class TestSectionReordering:
             linkedin_url=None,
             summary="Summary",
             sections=[
-                TailoredSection(name="experience", title="Experience", content="", bullets=[]),
+                TailoredSection(
+                    name="experience", title="Experience", content="", bullets=[]
+                ),
                 TailoredSection(name="skills", title="Skills", content="", bullets=[]),
-                TailoredSection(name="education", title="Education", content="", bullets=[]),
+                TailoredSection(
+                    name="education", title="Education", content="", bullets=[]
+                ),
             ],
             keywords_used=[],
             target_job_url=sample_job_description.job_url,
@@ -419,7 +423,6 @@ class TestTruthfulnessEnforcement:
             )
 
             # Resume should only reference real companies
-            valid_companies = {"Tech Corp", "StartupXYZ"}
             full_text = result.summary + " ".join(
                 b.text for s in result.sections for b in s.bullets
             )

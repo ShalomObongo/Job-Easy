@@ -55,6 +55,8 @@ class TailoringPlanLLMResponse(BaseModel):
 
 PLAN_SYSTEM_PROMPT = """You are an expert resume tailoring assistant. Your job is to analyze a job description and a candidate's profile to create a tailoring plan.
 
+**CRITICAL: You MUST respond with valid JSON matching the EXACT schema below. Use the EXACT field names shown. No variations allowed.**
+
 Your analysis must:
 1. Extract key skills and requirements from the job description
 2. Match them to the candidate's actual skills and experience
@@ -69,27 +71,76 @@ CRITICAL RULES:
 - Focus on rephrasing existing experience to highlight relevant keywords
 - Prioritize required skills over preferred skills
 
-For keyword_matches:
-- Match job keywords to user skills with confidence scores (0-1)
-- 1.0 = exact match, 0.8+ = strong match, 0.5-0.8 = partial match
+===== REQUIRED JSON SCHEMA =====
+You MUST return a JSON object with these EXACT fields:
 
-For evidence_mappings:
-- Connect specific job requirements to concrete user accomplishments
-- Use actual text from the user's work history
-- Include source company and role
+{
+  "keyword_matches": [
+    {
+      "job_keyword": "Python",
+      "user_skill": "Python programming",
+      "confidence": 0.95
+    }
+  ],
+  "evidence_mappings": [
+    {
+      "requirement": "3+ years of backend development",
+      "evidence": "Led backend development of payment processing system handling 10k transactions/day",
+      "source_company": "TechCorp Inc",
+      "source_role": "Senior Software Engineer",
+      "relevance_score": 0.9
+    }
+  ],
+  "section_order": ["experience", "skills", "projects", "education", "certifications"],
+  "bullet_rewrites": [
+    {
+      "original": "Developed APIs for the platform",
+      "suggested": "Developed RESTful APIs using Python and FastAPI, improving response times by 40%",
+      "keywords_added": ["Python", "FastAPI", "RESTful APIs"],
+      "emphasis_reason": "Added specific technologies mentioned in job requirements"
+    }
+  ],
+  "unsupported_claims": [
+    {
+      "requirement": "Kubernetes experience required",
+      "reason": "No Kubernetes experience found in candidate's profile",
+      "severity": "critical"
+    }
+  ]
+}
+
+===== FIELD REQUIREMENTS =====
+
+For keyword_matches (REQUIRED FIELDS: job_keyword, user_skill, confidence):
+- "job_keyword": The exact keyword from the job posting (string)
+- "user_skill": The matching skill from user's profile (string)
+- "confidence": Match confidence 0.0-1.0 (number). 1.0=exact, 0.8+=strong, 0.5-0.8=partial
+
+For evidence_mappings (REQUIRED FIELDS: requirement, evidence, source_company, source_role, relevance_score):
+- "requirement": The job requirement being addressed (string)
+- "evidence": Specific accomplishment text from user's profile (string)
+- "source_company": Company where the evidence is from (string)
+- "source_role": Role/title where the evidence is from (string)
+- "relevance_score": How relevant this evidence is 0.0-1.0 (number)
 
 For section_order:
-- Recommend section order based on what's most relevant for this job
-- Common sections: summary, experience, skills, education, projects, certifications
+- Array of section identifiers in recommended order.
+- IMPORTANT: The resume summary is generated separately and is NOT a section. Do NOT include "summary" here.
+- Allowed values (lowercase only): "experience", "skills", "projects", "education", "certifications"
+- Do not invent extra sections (e.g., "tools", "platforms", "interests") and do not repeat sections
 
-For bullet_rewrites:
-- Suggest how to rewrite existing bullets to include job keywords
-- Never invent new accomplishments - only rephrase existing ones
-- List the keywords being added
+For bullet_rewrites (REQUIRED FIELDS: original, suggested, keywords_added, emphasis_reason):
+- "original": The original bullet text from user's resume (string)
+- "suggested": The rewritten bullet with keywords (string)
+- "keywords_added": Array of keywords added in the rewrite (array of strings)
+- "emphasis_reason": Why this rewrite improves the bullet (string)
 
-For unsupported_claims:
-- Flag required skills/experience the candidate doesn't have
-- Mark as "warning" for preferred requirements, "critical" for must-haves
+For unsupported_claims (REQUIRED FIELDS: requirement, reason, severity):
+- "requirement": The requirement that cannot be supported (string)
+- "reason": Why there's no supporting evidence (string)
+- "severity": Either "warning" (preferred skills) or "critical" (must-have skills)
+
+===== RESPOND WITH ONLY THE JSON OBJECT. NO MARKDOWN FENCES, NO EXPLANATORY TEXT. =====
 """
 
 
@@ -160,16 +211,52 @@ class TailoringPlanService:
             system_prompt=PLAN_SYSTEM_PROMPT,
         )
 
+        section_order = self._normalize_section_order(response.section_order)
+
         return TailoringPlan(
             job_url=job.job_url,
             company=job.company,
             role_title=job.role_title,
             keyword_matches=response.keyword_matches,
             evidence_mappings=response.evidence_mappings,
-            section_order=response.section_order,
+            section_order=section_order,
             bullet_rewrites=response.bullet_rewrites,
             unsupported_claims=response.unsupported_claims,
         )
+
+    def _normalize_section_order(self, section_order: list[str]) -> list[str]:
+        allowed = ("experience", "skills", "projects", "education", "certifications")
+        normalized: list[str] = []
+        seen: set[str] = set()
+
+        for raw in section_order or []:
+            value = str(raw).strip().lower()
+            if not value or value == "summary":
+                continue
+
+            if "experience" in value or value.startswith("work"):
+                value = "experience"
+            elif "skill" in value:
+                value = "skills"
+            elif "project" in value:
+                value = "projects"
+            elif "education" in value:
+                value = "education"
+            elif "cert" in value or "training" in value:
+                value = "certifications"
+
+            if value in allowed and value not in seen:
+                normalized.append(value)
+                seen.add(value)
+
+        if not normalized:
+            return list(allowed)
+
+        # Ensure a stable, ATS-friendly default ordering for any missing sections.
+        for value in allowed:
+            if value not in seen:
+                normalized.append(value)
+        return normalized
 
     def _build_prompt(self, profile: UserProfile, job: JobDescription) -> str:
         """Build the prompt for tailoring plan generation.

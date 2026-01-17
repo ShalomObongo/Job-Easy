@@ -194,6 +194,7 @@ class TestKeywordHighlighting:
         self, sample_tailoring_plan, sample_tailored_resume, sample_cover_letter
     ):
         """Test that matched keywords are included."""
+        _ = sample_cover_letter
         service = ReviewPacketService()
         packet = service.create_review_packet(
             plan=sample_tailoring_plan,
@@ -231,6 +232,7 @@ class TestEvidenceMappingDisplay:
         self, sample_tailoring_plan, sample_tailored_resume, sample_cover_letter
     ):
         """Test that evidence mapping has correct structure."""
+        _ = sample_cover_letter
         service = ReviewPacketService()
         packet = service.create_review_packet(
             plan=sample_tailoring_plan,
@@ -246,6 +248,7 @@ class TestEvidenceMappingDisplay:
         self, sample_tailoring_plan, sample_tailored_resume, sample_cover_letter
     ):
         """Test that unmatched requirements are flagged."""
+        _ = sample_cover_letter
         service = ReviewPacketService()
         packet = service.create_review_packet(
             plan=sample_tailoring_plan,
@@ -270,6 +273,7 @@ class TestFilePathCollection:
         self, sample_tailoring_plan, sample_tailored_resume, sample_cover_letter
     ):
         """Test that resume path is included."""
+        _ = sample_cover_letter
         service = ReviewPacketService()
         packet = service.create_review_packet(
             plan=sample_tailoring_plan,
@@ -319,6 +323,7 @@ class TestReviewPacketMetadata:
         self, sample_tailoring_plan, sample_tailored_resume, sample_cover_letter
     ):
         """Test that job info is included."""
+        _ = sample_cover_letter
         service = ReviewPacketService()
         packet = service.create_review_packet(
             plan=sample_tailoring_plan,
@@ -344,9 +349,7 @@ class TestReviewPacketMetadata:
         assert packet.generated_at is not None
         assert isinstance(packet.generated_at, datetime)
 
-    def test_packet_serialization(
-        self, sample_tailoring_plan, sample_tailored_resume
-    ):
+    def test_packet_serialization(self, sample_tailoring_plan, sample_tailored_resume):
         """Test that packet can be serialized to dict."""
         service = ReviewPacketService()
         packet = service.create_review_packet(

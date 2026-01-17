@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
+
 from src.extractor.models import JobDescription
 from src.scoring.config import ScoringConfig, get_scoring_config
-from src.scoring.matchers import find_matching_skills
+from src.scoring.matchers import expand_skills, find_matching_skills
 from src.scoring.models import ConstraintResult, FitResult, FitScore, UserProfile
 
 
@@ -13,6 +15,45 @@ class FitScoringService:
 
     def __init__(self, config: ScoringConfig | None = None) -> None:
         self.config = config or get_scoring_config()
+
+    def _build_available_skills(self, profile: UserProfile) -> list[str]:
+        """Build a broad skill inventory from structured profile fields."""
+        available: list[str] = []
+        available.extend(profile.skills or [])
+        for exp in profile.work_history:
+            available.extend(exp.skills_used or [])
+
+        text_sources: list[str] = []
+        if profile.current_title:
+            text_sources.append(profile.current_title)
+        if profile.summary:
+            text_sources.append(profile.summary)
+        for exp in profile.work_history:
+            if exp.description:
+                text_sources.append(exp.description)
+
+        corpus = " ".join(text_sources).lower()
+        if corpus:
+            if re.search(r"\btest", corpus):
+                available.append("testing")
+            if re.search(r"\bdebug", corpus) or "optim" in corpus:
+                available.append("debugging")
+            if re.search(r"\bjavascript\b|\bjs\b", corpus):
+                available.append("javascript")
+            if re.search(r"\bhtml\b", corpus):
+                available.append("html")
+            if re.search(r"\bcss\b", corpus):
+                available.append("css")
+            if re.search(r"\breact\b", corpus):
+                available.append("react")
+            if re.search(r"\bnext\.js\b|\bnextjs\b", corpus):
+                available.append("next.js")
+            if re.search(r"\bmongo(db)?\b", corpus):
+                available.append("mongodb")
+            if re.search(r"\bjquery\b", corpus):
+                available.append("jquery")
+
+        return expand_skills(available)
 
     def score_skills(
         self, job: JobDescription, profile: UserProfile
@@ -25,7 +66,7 @@ class FitScoringService:
         """
         required = job.required_skills or []
         preferred = job.preferred_skills or []
-        available = profile.skills or []
+        available = self._build_available_skills(profile)
 
         if not required:
             must_have_score = 1.0

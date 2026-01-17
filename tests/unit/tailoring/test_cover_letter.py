@@ -11,7 +11,7 @@ import pytest
 from src.extractor.models import JobDescription
 from src.scoring.models import Education, UserProfile, WorkExperience
 from src.tailoring.config import TailoringConfig, reset_tailoring_config
-from src.tailoring.cover_letter import CoverLetterService
+from src.tailoring.cover_letter import CoverLetterLLMResponse, CoverLetterService
 from src.tailoring.models import (
     CoverLetter,
     EvidenceMapping,
@@ -137,11 +137,17 @@ class TestCoverLetterStructure:
             target_job_url=sample_job_description.job_url,
             target_company=sample_job_description.company,
             target_role=sample_job_description.role_title,
-            key_qualifications=["8 years Python", "High-scale microservices", "10K+ requests/sec"],
+            key_qualifications=[
+                "8 years Python",
+                "High-scale microservices",
+                "10K+ requests/sec",
+            ],
         )
 
         with patch.object(
-            CoverLetterService, "_generate_cover_letter_with_llm", new_callable=AsyncMock
+            CoverLetterService,
+            "_generate_cover_letter_with_llm",
+            new_callable=AsyncMock,
         ) as mock_generate:
             mock_generate.return_value = mock_cover
 
@@ -173,7 +179,9 @@ class TestCoverLetterStructure:
         )
 
         with patch.object(
-            CoverLetterService, "_generate_cover_letter_with_llm", new_callable=AsyncMock
+            CoverLetterService,
+            "_generate_cover_letter_with_llm",
+            new_callable=AsyncMock,
         ) as mock_generate:
             mock_generate.return_value = mock_cover
 
@@ -194,6 +202,68 @@ class TestCoverLetterWordCount:
         reset_tailoring_config()
 
     @pytest.mark.asyncio
+    async def test_word_count_is_padded_and_trimmed_when_llm_misses_range(
+        self, sample_user_profile, sample_job_description, sample_tailoring_plan
+    ):
+        """Ensure deterministic word-count enforcement for flaky LLM outputs."""
+        config = TailoringConfig(cover_letter_min_words=30, cover_letter_max_words=40)
+        service = CoverLetterService(config=config)
+
+        short_response = CoverLetterLLMResponse(
+            opening="Hello",
+            body="Too short.",
+            closing="Thanks.",
+            key_qualifications=[],
+        )
+
+        with patch.object(
+            service.llm,
+            "generate_structured",
+            new_callable=AsyncMock,
+        ) as mock_generate:
+            mock_generate.side_effect = [short_response, short_response]
+
+            cover = await service._generate_cover_letter_with_llm(
+                sample_user_profile, sample_job_description, sample_tailoring_plan
+            )
+
+            assert (
+                config.cover_letter_min_words
+                <= cover.word_count
+                <= config.cover_letter_max_words
+            )
+            assert sample_job_description.company in cover.full_text
+
+    @pytest.mark.asyncio
+    async def test_word_count_is_trimmed_when_llm_output_is_too_long(
+        self, sample_user_profile, sample_job_description, sample_tailoring_plan
+    ):
+        """Ensure deterministic trimming when model produces overly long letters."""
+        config = TailoringConfig(cover_letter_min_words=10, cover_letter_max_words=20)
+        service = CoverLetterService(config=config)
+
+        long_body = "word " * 200
+        long_response = CoverLetterLLMResponse(
+            opening="Opening.",
+            body=long_body,
+            closing="Closing.",
+            key_qualifications=[],
+        )
+
+        with patch.object(
+            service.llm,
+            "generate_structured",
+            new_callable=AsyncMock,
+        ) as mock_generate:
+            mock_generate.side_effect = [long_response, long_response]
+
+            cover = await service._generate_cover_letter_with_llm(
+                sample_user_profile, sample_job_description, sample_tailoring_plan
+            )
+
+            assert cover.word_count <= config.cover_letter_max_words
+
+    @pytest.mark.asyncio
     async def test_word_count_in_target_range(
         self, sample_user_profile, sample_job_description, sample_tailoring_plan
     ):
@@ -211,7 +281,9 @@ class TestCoverLetterWordCount:
         )
 
         with patch.object(
-            CoverLetterService, "_generate_cover_letter_with_llm", new_callable=AsyncMock
+            CoverLetterService,
+            "_generate_cover_letter_with_llm",
+            new_callable=AsyncMock,
         ) as mock_generate:
             mock_generate.return_value = mock_cover
 
@@ -250,7 +322,9 @@ class TestCoverLetterEvidenceIntegration:
         )
 
         with patch.object(
-            CoverLetterService, "_generate_cover_letter_with_llm", new_callable=AsyncMock
+            CoverLetterService,
+            "_generate_cover_letter_with_llm",
+            new_callable=AsyncMock,
         ) as mock_generate:
             mock_generate.return_value = mock_cover
 
@@ -279,7 +353,9 @@ class TestCoverLetterEvidenceIntegration:
         )
 
         with patch.object(
-            CoverLetterService, "_generate_cover_letter_with_llm", new_callable=AsyncMock
+            CoverLetterService,
+            "_generate_cover_letter_with_llm",
+            new_callable=AsyncMock,
         ) as mock_generate:
             mock_generate.return_value = mock_cover
 
@@ -317,7 +393,9 @@ class TestCoverLetterPersonalization:
         )
 
         with patch.object(
-            CoverLetterService, "_generate_cover_letter_with_llm", new_callable=AsyncMock
+            CoverLetterService,
+            "_generate_cover_letter_with_llm",
+            new_callable=AsyncMock,
         ) as mock_generate:
             mock_generate.return_value = mock_cover
 
@@ -356,7 +434,9 @@ class TestCoverLetterTruthfulness:
         )
 
         with patch.object(
-            CoverLetterService, "_generate_cover_letter_with_llm", new_callable=AsyncMock
+            CoverLetterService,
+            "_generate_cover_letter_with_llm",
+            new_callable=AsyncMock,
         ) as mock_generate:
             mock_generate.return_value = mock_cover
 

@@ -106,7 +106,9 @@ class TestKeywordExtraction:
             role_title=sample_job_description.role_title,
             keyword_matches=[
                 KeywordMatch(job_keyword="Python", user_skill="Python", confidence=1.0),
-                KeywordMatch(job_keyword="FastAPI", user_skill="FastAPI", confidence=1.0),
+                KeywordMatch(
+                    job_keyword="FastAPI", user_skill="FastAPI", confidence=1.0
+                ),
             ],
             evidence_mappings=[],
             section_order=["experience", "skills", "education"],
@@ -120,7 +122,9 @@ class TestKeywordExtraction:
             mock_generate.return_value = mock_plan
 
             service = TailoringPlanService()
-            plan = await service.generate_plan(sample_user_profile, sample_job_description)
+            plan = await service.generate_plan(
+                sample_user_profile, sample_job_description
+            )
 
             assert len(plan.keyword_matches) >= 2
             keywords = [m.job_keyword for m in plan.keyword_matches]
@@ -136,7 +140,9 @@ class TestSkillMatching:
         reset_tailoring_config()
 
     @pytest.mark.asyncio
-    async def test_matches_exact_skills(self, sample_job_description, sample_user_profile):
+    async def test_matches_exact_skills(
+        self, sample_job_description, sample_user_profile
+    ):
         """Test exact skill matches have high confidence."""
         mock_plan = TailoringPlan(
             job_url=sample_job_description.job_url,
@@ -158,7 +164,9 @@ class TestSkillMatching:
             mock_generate.return_value = mock_plan
 
             service = TailoringPlanService()
-            plan = await service.generate_plan(sample_user_profile, sample_job_description)
+            plan = await service.generate_plan(
+                sample_user_profile, sample_job_description
+            )
 
             python_match = next(
                 (m for m in plan.keyword_matches if m.job_keyword == "Python"), None
@@ -167,7 +175,9 @@ class TestSkillMatching:
             assert python_match.confidence >= 0.9
 
     @pytest.mark.asyncio
-    async def test_matches_similar_skills(self, sample_job_description, sample_user_profile):
+    async def test_matches_similar_skills(
+        self, sample_job_description, sample_user_profile
+    ):
         """Test similar skills are matched with appropriate confidence."""
         mock_plan = TailoringPlan(
             job_url=sample_job_description.job_url,
@@ -190,7 +200,9 @@ class TestSkillMatching:
             mock_generate.return_value = mock_plan
 
             service = TailoringPlanService()
-            plan = await service.generate_plan(sample_user_profile, sample_job_description)
+            plan = await service.generate_plan(
+                sample_user_profile, sample_job_description
+            )
 
             # AWS should match "AWS or GCP" requirement
             aws_match = next(
@@ -243,7 +255,9 @@ class TestEvidenceMapping:
             mock_generate.return_value = mock_plan
 
             service = TailoringPlanService()
-            plan = await service.generate_plan(sample_user_profile, sample_job_description)
+            plan = await service.generate_plan(
+                sample_user_profile, sample_job_description
+            )
 
             assert len(plan.evidence_mappings) >= 1
             # Check that experience requirement is mapped
@@ -263,7 +277,9 @@ class TestUnsupportedClaimsDetection:
         reset_tailoring_config()
 
     @pytest.mark.asyncio
-    async def test_flags_missing_skills(self, sample_job_description, sample_user_profile):
+    async def test_flags_missing_skills(
+        self, sample_job_description, sample_user_profile
+    ):
         """Test that missing required skills are flagged."""
         # User doesn't have Kubernetes
         mock_plan = TailoringPlan(
@@ -289,7 +305,9 @@ class TestUnsupportedClaimsDetection:
             mock_generate.return_value = mock_plan
 
             service = TailoringPlanService()
-            plan = await service.generate_plan(sample_user_profile, sample_job_description)
+            plan = await service.generate_plan(
+                sample_user_profile, sample_job_description
+            )
 
             # Kubernetes is in preferred_skills but user doesn't have it
             k8s_warning = next(
@@ -329,7 +347,9 @@ class TestSectionReordering:
             mock_generate.return_value = mock_plan
 
             service = TailoringPlanService()
-            plan = await service.generate_plan(sample_user_profile, sample_job_description)
+            plan = await service.generate_plan(
+                sample_user_profile, sample_job_description
+            )
 
             assert len(plan.section_order) >= 3
             # Experience should be high priority for senior role
@@ -372,7 +392,9 @@ class TestBulletRewriteSuggestions:
             mock_generate.return_value = mock_plan
 
             service = TailoringPlanService()
-            plan = await service.generate_plan(sample_user_profile, sample_job_description)
+            plan = await service.generate_plan(
+                sample_user_profile, sample_job_description
+            )
 
             assert len(plan.bullet_rewrites) >= 1
             rewrite = plan.bullet_rewrites[0]
