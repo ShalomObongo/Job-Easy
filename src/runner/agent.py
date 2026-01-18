@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -146,7 +146,10 @@ def create_application_agent(
                     print("Please enter an answer (cannot be blank).")
                     continue
                 normalized = answer.strip().lower()
-                if normalized in {"answer yourself", "make it up", "invent"} or "fabricat" in normalized:
+                if (
+                    normalized in {"answer yourself", "make it up", "invent"}
+                    or "fabricat" in normalized
+                ):
                     print(
                         "Please provide your own truthful answer (I can't fabricate responses for applications)."
                     )

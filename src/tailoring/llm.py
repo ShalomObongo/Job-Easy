@@ -147,7 +147,9 @@ class TailoringLLM:
                     # Use longer base wait for rate limits (common with Groq free tier)
                     is_rate_limit = "rate_limit" in str(e).lower() or "429" in str(e)
                     base_wait = 8 if is_rate_limit else 2
-                    wait_time = base_wait * (attempt + 1)  # Linear backoff for rate limits
+                    wait_time = base_wait * (
+                        attempt + 1
+                    )  # Linear backoff for rate limits
                     logger.warning(
                         f"LLM call failed (attempt {attempt + 1}), retrying in {wait_time}s: {e}"
                     )
@@ -200,7 +202,9 @@ class TailoringLLM:
                     # Use longer base wait for rate limits (common with Groq free tier)
                     is_rate_limit = "rate_limit" in str(e).lower() or "429" in str(e)
                     base_wait = 8 if is_rate_limit else 2
-                    wait_time = base_wait * (attempt + 1)  # Linear backoff for rate limits
+                    wait_time = base_wait * (
+                        attempt + 1
+                    )  # Linear backoff for rate limits
                     logger.warning(
                         f"LLM call failed (attempt {attempt + 1}), retrying in {wait_time}s: {e}"
                     )

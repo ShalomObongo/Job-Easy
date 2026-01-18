@@ -244,7 +244,9 @@ async def _get_page_text(browser_session: BrowserSession) -> str:
         return ""
 
     try:
-        text = await page.evaluate("() => (document.body && document.body.innerText) ? document.body.innerText : ''")
+        text = await page.evaluate(
+            "() => (document.body && document.body.innerText) ? document.body.innerText : ''"
+        )
     except Exception:
         return ""
 

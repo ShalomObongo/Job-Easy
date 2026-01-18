@@ -100,3 +100,7 @@ logs/
 
 # Q&A Bank (user-specific learned answers)
 data/qa_bank.json
+
+# Local leads files (often contain user-specific URLs)
+leads.txt
+*.leads.txt

@@ -8,9 +8,17 @@
 
 *No active tracks.*
 
----
-
 ## Completed Tracks
+
+### [track_20260118_011233] Autonomous Mode (Queue + Scheduler) ✅
+- **Type**: Feature
+- **Status**: Completed
+- **Completed**: 2026-01-18
+- **Epic Reference**: E7
+- **Spec**: [spec.md](./tracks/track_20260118_011233/spec.md)
+- **Plan**: [plan.md](./tracks/track_20260118_011233/plan.md)
+
+Batch processing mode that reads job URLs from a file, deduplicates against tracker, ranks by fit score, and processes applications sequentially using the existing single-job pipeline.
 
 ### [track_20260116_174354] Dynamic Application Runner (Any Job Link) ✅
 - **Type**: Feature

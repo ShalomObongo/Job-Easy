@@ -1,0 +1,7 @@
+# Sample leads file for autonomous mode integration tests
+#
+# One job URL per line.
+
+https://example.com/jobs/1
+https://example.com/jobs/2
+

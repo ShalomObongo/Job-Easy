@@ -93,7 +93,9 @@ async def test_click_submit_button_prefers_dom_index() -> None:
     page = _DummyPage(element)
     session = _DummyBrowserSession(page, _DummyNode(backend_node_id=999))
 
-    clicked = await _click_submit_button(browser_session=session, submit_button_index=1316)
+    clicked = await _click_submit_button(
+        browser_session=session, submit_button_index=1316
+    )
 
     assert clicked is True
     assert element.clicked is True
@@ -107,9 +109,11 @@ async def test_click_submit_button_falls_back_to_css_search() -> None:
     page = _DummyPage(element)
     session = _DummyBrowserSession(page, node=None)
 
-    clicked = await _click_submit_button(browser_session=session, submit_button_index=1316)
+    clicked = await _click_submit_button(
+        browser_session=session, submit_button_index=1316
+    )
 
     assert clicked is True
     assert element.clicked is True
     assert session.index_lookups == [1316]
-    assert page.css_queries == ['button[type=\"submit\"], input[type=\"submit\"]']
+    assert page.css_queries == ['button[type="submit"], input[type="submit"]']

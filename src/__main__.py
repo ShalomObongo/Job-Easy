@@ -3,10 +3,18 @@
 import argparse
 import asyncio
 import sys
+from pathlib import Path
 
 from src import __version__
 from src.config.settings import Settings
 from src.utils.logging import configure_logging
+
+
+def _min_score(value: str) -> float:
+    score = float(value)
+    if not (0.0 <= score <= 1.0):
+        raise argparse.ArgumentTypeError("--min-score must be between 0.0 and 1.0")
+    return score
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -18,7 +26,7 @@ def create_parser() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   python -m src single https://example.com/jobs/123
-  python -m src autonomous
+  python -m src autonomous leads.txt
 
 For more information, see the documentation in docs/
         """,
@@ -55,9 +63,35 @@ For more information, see the documentation in docs/
     )
 
     # Autonomous mode
-    subparsers.add_parser(
+    autonomous_parser = subparsers.add_parser(
         "autonomous",
         help="Run in autonomous mode (batch processing)",
+    )
+    autonomous_parser.add_argument(
+        "leads_file",
+        type=Path,
+        help="Path to a text file with one job URL per line",
+    )
+    autonomous_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Score and generate documents without applying",
+    )
+    autonomous_parser.add_argument(
+        "--min-score",
+        type=_min_score,
+        default=None,
+        help="Skip jobs below this overall score (0.0-1.0)",
+    )
+    autonomous_parser.add_argument(
+        "--include-skips",
+        action="store_true",
+        help="Include jobs even if fit scoring recommends skip",
+    )
+    autonomous_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompt before processing",
     )
 
     return parser
@@ -121,8 +155,53 @@ def main(args: list[str] | None = None) -> int:
 
     elif parsed.mode == "autonomous":
         logger.info("Starting autonomous mode")
-        # TODO: Implement autonomous mode
-        print("Autonomous mode not yet implemented")
+        if not getattr(parsed, "leads_file", None):
+            logger.error("leads_file is required for autonomous mode")
+            print("Error: leads_file is required for autonomous mode", file=sys.stderr)
+            return 1
+
+        leads_file: Path = parsed.leads_file
+        if not leads_file.exists():
+            print(f"Error: leads file not found: {leads_file}", file=sys.stderr)
+            return 1
+
+        from src.autonomous.service import run_autonomous
+
+        def _progress(event) -> None:
+            print(
+                f"[{event.index}/{event.total}] {event.status.value}: {event.url} "
+                f"(processed={event.processed} submitted={event.submitted} "
+                f"skipped={event.skipped} failed={event.failed})"
+            )
+
+        result = asyncio.run(
+            run_autonomous(
+                leads_file,
+                settings=settings,
+                dry_run=parsed.dry_run,
+                min_score=parsed.min_score,
+                include_skips=parsed.include_skips or parsed.dry_run,
+                assume_yes=parsed.yes,
+                progress_callback=_progress,
+            )
+        )
+
+        print("\nBatch complete.")
+        print(
+            "Totals: "
+            f"processed={result.processed} submitted={result.submitted} "
+            f"skipped={result.skipped} failed={result.failed}"
+        )
+        if result.job_results:
+            print("\nResults:")
+            for job in result.job_results:
+                summary = f"- {job.status.value}: {job.url}"
+                if job.error:
+                    summary += f" ({job.error})"
+                print(summary)
+        if result.failed:
+            return 1
+        return 0
 
     return 0
 

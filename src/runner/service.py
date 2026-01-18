@@ -36,6 +36,7 @@ class SingleJobApplicationService:
         scoring_service: Any,
         profile_service: Any,
         tailoring_service: Any | None = None,
+        source_mode: SourceMode = SourceMode.SINGLE,
     ) -> None:
         self.settings = settings
         self.tracker_repository = tracker_repository
@@ -44,6 +45,7 @@ class SingleJobApplicationService:
         self.scoring_service = scoring_service
         self.profile_service = profile_service
         self.tailoring_service = tailoring_service
+        self.source_mode = source_mode
 
     async def run(self, url: str) -> ApplicationRunResult:
         """Run a single job application flow from URL."""
@@ -139,7 +141,7 @@ class SingleJobApplicationService:
                 company=job.company,
                 role=job.role_title,
                 location=job.location,
-                source_mode=SourceMode.SINGLE,
+                source_mode=self.source_mode,
             )
 
         run_dir = (

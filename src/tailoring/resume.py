@@ -28,7 +28,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_ALLOWED_SECTION_NAMES = {"experience", "skills", "projects", "education", "certifications"}
+_ALLOWED_SECTION_NAMES = {
+    "experience",
+    "skills",
+    "projects",
+    "education",
+    "certifications",
+}
 _SECTION_TITLE_BY_NAME = {
     "experience": "Professional Experience",
     "skills": "Technical Skills",
@@ -56,9 +62,15 @@ class TailoredBulletLLM(BaseModel):
             return {"text": data}
         if isinstance(data, dict) and "text" not in data:
             if "bullet" in data:
-                return {"text": data.get("bullet"), "keywords_used": data.get("keywords_used", [])}
+                return {
+                    "text": data.get("bullet"),
+                    "keywords_used": data.get("keywords_used", []),
+                }
             if "value" in data:
-                return {"text": data.get("value"), "keywords_used": data.get("keywords_used", [])}
+                return {
+                    "text": data.get("value"),
+                    "keywords_used": data.get("keywords_used", []),
+                }
         return data
 
 
@@ -110,10 +122,13 @@ class TailoredSectionLLM(BaseModel):
         if bullets in (None, ""):
             bullets = []
 
-        if isinstance(content, list) and not bullets:
-            if "experience" in name_lower or "work" in name_lower:
-                data["bullets"] = content
-                data["content"] = ""
+        if (
+            isinstance(content, list)
+            and not bullets
+            and ("experience" in name_lower or "work" in name_lower)
+        ):
+            data["bullets"] = content
+            data["content"] = ""
 
         return data
 
@@ -326,7 +341,9 @@ class ResumeTailoringService:
         plan_order = [str(s).strip().lower() for s in (plan.section_order or [])]
         if "projects" in plan_order:
             if projects_section is None:
-                issues.append("Plan requests a projects section, but none was produced.")
+                issues.append(
+                    "Plan requests a projects section, but none was produced."
+                )
             elif not projects_section.bullets:
                 issues.append("Projects section must include 1–3 bullets.")
 
@@ -398,7 +415,9 @@ class ResumeTailoringService:
             if len(projects_section.bullets) > 3:
                 projects_section.bullets = projects_section.bullets[:3]
             elif len(projects_section.bullets) < 1:
-                response.sections = [s for s in response.sections if s is not projects_section]
+                response.sections = [
+                    s for s in response.sections if s is not projects_section
+                ]
 
         return response
 
@@ -561,7 +580,10 @@ Detected violations:
                     name=s.name,
                     title=s.title,
                     content=s.content,
-                    bullets=[TailoredBullet(text=b.text, keywords_used=b.keywords_used) for b in s.bullets],
+                    bullets=[
+                        TailoredBullet(text=b.text, keywords_used=b.keywords_used)
+                        for b in s.bullets
+                    ],
                 )
                 for s in response.sections
             ],
@@ -602,7 +624,9 @@ Detected violations:
             title = _SECTION_TITLE_BY_NAME.get(name, section.title)
             content = (section.content or "").strip()
             bullets = [
-                TailoredBulletLLM(text=b.text.strip(), keywords_used=b.keywords_used or [])
+                TailoredBulletLLM(
+                    text=b.text.strip(), keywords_used=b.keywords_used or []
+                )
                 for b in section.bullets
                 if b.text and b.text.strip()
             ]
@@ -636,7 +660,13 @@ Detected violations:
             for s in getattr(plan, "section_order", []) or []
             if canonical_section_name(s) in _ALLOWED_SECTION_NAMES
         ]
-        default_order = ["experience", "skills", "projects", "education", "certifications"]
+        default_order = [
+            "experience",
+            "skills",
+            "projects",
+            "education",
+            "certifications",
+        ]
         order = plan_order or default_order
 
         ordered_sections: list[TailoredSectionLLM] = []

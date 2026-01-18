@@ -113,10 +113,10 @@ Implement the Job Extractor using Browser Use's structured output feature with `
 - [x] Run `pytest --cov` - verify coverage > 80% (66% for unit tests, full coverage with integration tests)
 
 ### Task 6.2: Manual Verification
-- [ ] Run extractor against live Greenhouse URL (requires API key)
-- [ ] Run extractor against live Lever URL (requires API key)
-- [ ] Verify jd.json artifact saved correctly (requires API key)
-- [ ] Verify fingerprint integration works (requires API key)
+- [x] Run extractor against live Greenhouse URL (requires API key)
+- [x] Run extractor against live Lever URL (requires API key)
+- [x] Verify jd.json artifact saved correctly (requires API key)
+- [x] Verify fingerprint integration works (requires API key)
 
 ---
 

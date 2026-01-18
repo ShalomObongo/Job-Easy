@@ -26,9 +26,32 @@ pip install -e ".[dev]"
 # Run in single-job mode
 python -m src single https://example.com/job/123
 
+# Run in autonomous (batch) mode
+python -m src autonomous leads.txt --dry-run --yes
+
 # Run tests
 pytest
 ```
+
+## Autonomous Mode
+
+Autonomous mode processes a batch of job URLs from a text file, deduplicates them
+against the tracker, ranks by fit score, and runs the existing single-job
+pipeline sequentially.
+
+Leads file format:
+
+```text
+# one URL per line
+https://example.com/jobs/123
+https://example.com/jobs/456
+```
+
+Flags:
+- `--dry-run`: generate documents without applying
+- `--min-score 0.0-1.0`: skip jobs below the threshold
+- `--include-skips`: include jobs even if fit scoring recommends skip
+- `--yes`: skip the batch confirmation prompt
 
 ## Fit Scoring
 

@@ -1,0 +1,25 @@
+name: "Test User"
+email: "test@example.com"
+phone: null
+location: "Remote"
+linkedin_url: null
+skills:
+  - "python"
+  - "pytest"
+years_of_experience: 5
+current_title: "Software Engineer"
+summary: "Test profile for integration tests."
+work_history: []
+education: []
+certifications: []
+work_type_preferences:
+  - "remote"
+  - "hybrid"
+  - "onsite"
+target_locations: null
+visa_sponsorship_needed: false
+min_salary: null
+preferred_salary: null
+salary_currency: "USD"
+experience_level: "mid"
+
