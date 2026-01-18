@@ -1,0 +1,9 @@
+{
+  "track_id": "track_20260118_054529",
+  "title": "Component CLI Commands + Documentation Refresh",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-01-18T05:45:29Z",
+  "updated_at": "2026-01-18T05:45:29Z",
+  "description": "Proper usage for each component and setup documentation. Add CLI subcommands to run components individually (extract/score/tailor/apply/queue/tracker), update the job-easy command accordingly, and refresh README + docs."
+}

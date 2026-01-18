@@ -6,7 +6,12 @@
 
 ## Active Tracks
 
-*No active tracks.*
+---
+
+- [ ] **Track: Component CLI Commands + Documentation Refresh**
+*Link: [./tracks/track_20260118_054529/](./tracks/track_20260118_054529/)*
+
+---
 
 ## Completed Tracks
 
