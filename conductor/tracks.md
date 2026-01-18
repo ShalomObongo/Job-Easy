@@ -10,6 +10,45 @@
 
 ## Completed Tracks
 
+---
+
+- [x] **Track: Project Scaffolding**
+*Link: [./tracks/track_20260115_032209/](./tracks/track_20260115_032209/)*
+
+---
+
+- [x] **Track: Application Tracker**
+*Link: [./tracks/track_20260115_034749/](./tracks/track_20260115_034749/)*
+
+---
+
+- [x] **Track: Job Extractor**
+*Link: [./tracks/track_20260115_044908/](./tracks/track_20260115_044908/)*
+
+---
+
+- [x] **Track: Fit Scoring**
+*Link: [./tracks/track_20260115_190146/](./tracks/track_20260115_190146/)*
+
+---
+
+- [x] **Track: Tailoring & Document Generation**
+*Link: [./tracks/track_20260116_022216/](./tracks/track_20260116_022216/)*
+
+---
+
+- [x] **Track: Dynamic Application Runner (Any Job Link)**
+*Link: [./tracks/track_20260116_174354/](./tracks/track_20260116_174354/)*
+
+---
+
+- [x] **Track: Autonomous Mode (Queue + Scheduler)**
+*Link: [./tracks/track_20260118_011233/](./tracks/track_20260118_011233/)*
+
+---
+
+## Completed Tracks (Narrative)
+
 ### [track_20260118_011233] Autonomous Mode (Queue + Scheduler) ✅
 - **Type**: Feature
 - **Status**: Completed
