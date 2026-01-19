@@ -8,7 +8,7 @@
 
 ---
 
-- [ ] **Track: Component CLI Commands + Documentation Refresh**
+- [~] **Track: Component CLI Commands + Documentation Refresh**
 *Link: [./tracks/track_20260118_054529/](./tracks/track_20260118_054529/)*
 
 ---
