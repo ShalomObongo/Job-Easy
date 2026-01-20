@@ -95,6 +95,13 @@ class ExtractorConfig(BaseSettings):
         default=None,
         description="Model ID to use for extraction (e.g., 'gpt-4o', 'claude-sonnet-4-20250514')",
     )
+    llm_reasoning_effort: str | None = Field(
+        default=None,
+        description=(
+            "Reasoning effort for supported models (e.g. 'none', 'minimal', 'low', "
+            "'medium', 'high', 'xhigh')."
+        ),
+    )
 
     keep_browser_use_temp_dirs: bool = Field(
         default=False,

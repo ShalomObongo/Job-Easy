@@ -32,6 +32,7 @@ class TestSettingsDefaults:
             "RUNNER_LLM_API_KEY",
             "RUNNER_LLM_BASE_URL",
             "RUNNER_LLM_MODEL",
+            "RUNNER_LLM_REASONING_EFFORT",
         ]
         original_values = {}
         for var in env_vars_to_clear:
@@ -62,6 +63,7 @@ class TestSettingsDefaults:
             assert settings.runner_llm_api_key is None
             assert settings.runner_llm_base_url is None
             assert settings.runner_llm_model is None
+            assert settings.runner_llm_reasoning_effort is None
         finally:
             # Restore env vars
             for var, value in original_values.items():

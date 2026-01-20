@@ -197,6 +197,7 @@ Form filling rules:
    - Use select_dropdown(index, text) with the exact visible option text.
 2) If browser_state shows required-field errors (e.g. "This field is required.", "Resume/CV is required.", or invalid=true on required inputs), you are NOT at the final submit step yet. Fix missing fields/uploads first.
 3) Only upload the cover letter if there is a dedicated "Cover Letter" upload field. Never overwrite the Resume/CV field with the cover letter.
+4) If the cover letter field is text-only (no upload), generate a brief cover letter using the job information and company name from the page.
 
 Flow handling:
 1) If this is a job posting page, find and click an Apply / Apply Now button.
@@ -240,11 +241,15 @@ def get_runner_llm(settings: Any | None = None) -> Any | None:
     api_key = getattr(settings, "runner_llm_api_key", None) or base.llm_api_key
     base_url = getattr(settings, "runner_llm_base_url", None) or base.llm_base_url
     model = getattr(settings, "runner_llm_model", None) or base.llm_model
+    reasoning_effort = getattr(
+        settings, "runner_llm_reasoning_effort", None
+    ) or getattr(base, "llm_reasoning_effort", None)
 
     runner_config = ExtractorConfig(
         llm_provider=provider,
         llm_api_key=api_key,
         llm_base_url=base_url,
         llm_model=model,
+        llm_reasoning_effort=reasoning_effort,
     )
     return get_llm(runner_config)

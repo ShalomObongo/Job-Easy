@@ -64,6 +64,13 @@ class TailoringConfig(BaseSettings):
         default=300.0,
         description="Timeout in seconds for LLM calls",
     )
+    llm_reasoning_effort: str | None = Field(
+        default=None,
+        description=(
+            "Reasoning effort for supported models (e.g. 'disable', 'none', 'minimal', "
+            "'low', 'medium', 'high', 'xhigh')."
+        ),
+    )
 
     @model_validator(mode="after")
     def apply_extractor_fallbacks(self) -> TailoringConfig:
@@ -96,6 +103,14 @@ class TailoringConfig(BaseSettings):
             extractor_base_url = os.getenv("EXTRACTOR_LLM_BASE_URL")
             if extractor_base_url:
                 self.llm_base_url = extractor_base_url
+
+        if (
+            not os.getenv("TAILORING_LLM_REASONING_EFFORT")
+            and self.llm_reasoning_effort is None
+        ):
+            extractor_effort = os.getenv("EXTRACTOR_LLM_REASONING_EFFORT")
+            if extractor_effort:
+                self.llm_reasoning_effort = extractor_effort
 
         return self
 

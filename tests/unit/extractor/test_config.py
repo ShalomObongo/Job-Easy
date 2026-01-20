@@ -114,6 +114,7 @@ class TestExtractorConfig:
         monkeypatch.delenv("EXTRACTOR_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("EXTRACTOR_LLM_API_KEY", raising=False)
         monkeypatch.delenv("EXTRACTOR_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EXTRACTOR_LLM_REASONING_EFFORT", raising=False)
 
         config = ExtractorConfig(_env_file=None)
 
@@ -121,6 +122,7 @@ class TestExtractorConfig:
         assert config.llm_base_url is None
         assert config.llm_api_key is None
         assert config.llm_model is None
+        assert config.llm_reasoning_effort is None
 
     def test_extractor_config_reads_llm_settings_from_env(self, monkeypatch):
         """ExtractorConfig should read LLM settings from environment."""
@@ -130,6 +132,7 @@ class TestExtractorConfig:
         monkeypatch.setenv("EXTRACTOR_LLM_BASE_URL", "https://custom.endpoint.com/v1")
         monkeypatch.setenv("EXTRACTOR_LLM_API_KEY", "my-secret-key")
         monkeypatch.setenv("EXTRACTOR_LLM_MODEL", "gpt-4o-mini")
+        monkeypatch.setenv("EXTRACTOR_LLM_REASONING_EFFORT", "high")
 
         config = ExtractorConfig(_env_file=None)
 
@@ -137,6 +140,7 @@ class TestExtractorConfig:
         assert config.llm_base_url == "https://custom.endpoint.com/v1"
         assert config.llm_api_key == "my-secret-key"
         assert config.llm_model == "gpt-4o-mini"
+        assert config.llm_reasoning_effort == "high"
 
 
 class TestGetExtractorConfig:

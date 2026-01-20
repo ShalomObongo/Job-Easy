@@ -19,10 +19,12 @@ ENV_KEYS_TO_REMOVE = [
     "TAILORING_LLM_MODEL",
     "TAILORING_LLM_API_KEY",
     "TAILORING_LLM_BASE_URL",
+    "TAILORING_LLM_REASONING_EFFORT",
     "EXTRACTOR_LLM_PROVIDER",
     "EXTRACTOR_LLM_MODEL",
     "EXTRACTOR_LLM_API_KEY",
     "EXTRACTOR_LLM_BASE_URL",
+    "EXTRACTOR_LLM_REASONING_EFFORT",
 ]
 
 
@@ -176,6 +178,27 @@ class TestTailoringLLMStructuredOutput:
 
             call_args = mock_completion.call_args
             assert call_args.kwargs["response_format"] == SampleOutput
+
+    @pytest.mark.asyncio
+    async def test_generate_structured_passes_reasoning_effort(self, isolated_env):
+        """Test that reasoning_effort is passed through to LiteLLM when set."""
+        assert isolated_env is None
+        mock_response = MagicMock()
+        mock_response.choices = [
+            MagicMock(message=MagicMock(content='{"name": "test", "value": 1}'))
+        ]
+
+        with patch(
+            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+        ) as mock_completion:
+            mock_completion.return_value = mock_response
+
+            config = TailoringConfig(_env_file=None, llm_reasoning_effort="high")
+            llm = TailoringLLM(config=config)
+            await llm.generate_structured(prompt="Generate", output_model=SampleOutput)
+
+            call_args = mock_completion.call_args
+            assert call_args.kwargs["reasoning_effort"] == "high"
 
 
 class TestTailoringLLMErrorHandling:

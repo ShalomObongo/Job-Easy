@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import browser_use
 
@@ -117,3 +118,65 @@ def test_sets_save_conversation_path_per_run(tmp_path: Path, monkeypatch) -> Non
     )
 
     assert captured["kwargs"]["save_conversation_path"] == path
+
+
+def test_get_runner_llm_passes_reasoning_effort_override(monkeypatch) -> None:
+    from src.extractor.config import ExtractorConfig
+    from src.runner.agent import get_runner_llm
+
+    captured: dict[str, object] = {}
+
+    def fake_get_llm(config: ExtractorConfig):
+        captured["config"] = config
+        return object()
+
+    monkeypatch.setattr("src.runner.agent.get_llm", fake_get_llm)
+    monkeypatch.setattr(
+        "src.runner.agent.get_extractor_config",
+        lambda: ExtractorConfig(_env_file=None, llm_provider="openai"),
+    )
+
+    settings = SimpleNamespace(
+        runner_llm_provider=None,
+        runner_llm_api_key=None,
+        runner_llm_base_url=None,
+        runner_llm_model=None,
+        runner_llm_reasoning_effort="high",
+    )
+
+    get_runner_llm(settings)
+    config = captured["config"]
+    assert isinstance(config, ExtractorConfig)
+    assert config.llm_reasoning_effort == "high"
+
+
+def test_get_runner_llm_falls_back_to_extractor_reasoning_effort(monkeypatch) -> None:
+    from src.extractor.config import ExtractorConfig
+    from src.runner.agent import get_runner_llm
+
+    captured: dict[str, object] = {}
+
+    def fake_get_llm(config: ExtractorConfig):
+        captured["config"] = config
+        return object()
+
+    monkeypatch.setattr("src.runner.agent.get_llm", fake_get_llm)
+    monkeypatch.setattr(
+        "src.runner.agent.get_extractor_config",
+        lambda: ExtractorConfig(
+            _env_file=None, llm_provider="openai", llm_reasoning_effort="medium"
+        ),
+    )
+
+    settings = SimpleNamespace(
+        runner_llm_provider=None,
+        runner_llm_api_key=None,
+        runner_llm_base_url=None,
+        runner_llm_model=None,
+        runner_llm_reasoning_effort=None,
+    )
+
+    get_runner_llm(settings)
+    config = captured["config"]
+    assert isinstance(config, ExtractorConfig)
+    assert config.llm_reasoning_effort == "medium"

@@ -119,6 +119,13 @@ class Settings(BaseSettings):
         default=None,
         description="Runner LLM model ID (e.g., 'gpt-4o', 'claude-sonnet-4-20250514')",
     )
+    runner_llm_reasoning_effort: str | None = Field(
+        default=None,
+        description=(
+            "Reasoning effort for supported models (e.g. 'none', 'minimal', 'low', "
+            "'medium', 'high', 'xhigh')."
+        ),
+    )
 
     # Chrome profile settings
     use_existing_chrome_profile: bool = Field(

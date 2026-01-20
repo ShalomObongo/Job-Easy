@@ -19,10 +19,12 @@ ENV_KEYS_TO_REMOVE = [
     "TAILORING_LLM_MODEL",
     "TAILORING_LLM_API_KEY",
     "TAILORING_LLM_BASE_URL",
+    "TAILORING_LLM_REASONING_EFFORT",
     "EXTRACTOR_LLM_PROVIDER",
     "EXTRACTOR_LLM_MODEL",
     "EXTRACTOR_LLM_API_KEY",
     "EXTRACTOR_LLM_BASE_URL",
+    "EXTRACTOR_LLM_REASONING_EFFORT",
 ]
 
 
@@ -58,6 +60,7 @@ class TestTailoringConfig:
         assert config.llm_provider == "openai"
         assert config.llm_model == "gpt-4o"
         assert config.llm_api_key is None
+        assert config.llm_reasoning_effort is None
 
         # Template paths
         assert config.template_dir == Path("src/tailoring/templates")
@@ -245,6 +248,7 @@ class TestExtractorFallback:
         os.environ["EXTRACTOR_LLM_MODEL"] = "claude-sonnet-4-20250514"
         os.environ["EXTRACTOR_LLM_API_KEY"] = "extractor-key"
         os.environ["EXTRACTOR_LLM_BASE_URL"] = "http://localhost:8000/v1"
+        os.environ["EXTRACTOR_LLM_REASONING_EFFORT"] = "high"
 
         reset_tailoring_config()
         config = TailoringConfig(_env_file=None)
@@ -253,6 +257,7 @@ class TestExtractorFallback:
         assert config.llm_model == "claude-sonnet-4-20250514"
         assert config.llm_api_key == "extractor-key"
         assert config.llm_base_url == "http://localhost:8000/v1"
+        assert config.llm_reasoning_effort == "high"
 
     def test_tailoring_settings_override_extractor(self, isolated_env):
         """Test that TAILORING_* settings take precedence over EXTRACTOR_*."""
@@ -260,11 +265,14 @@ class TestExtractorFallback:
         # Set both TAILORING_* and EXTRACTOR_* env vars
         os.environ["TAILORING_LLM_PROVIDER"] = "openai"
         os.environ["TAILORING_LLM_MODEL"] = "gpt-4o"
+        os.environ["TAILORING_LLM_REASONING_EFFORT"] = "low"
         os.environ["EXTRACTOR_LLM_PROVIDER"] = "anthropic"
         os.environ["EXTRACTOR_LLM_MODEL"] = "claude-sonnet-4-20250514"
+        os.environ["EXTRACTOR_LLM_REASONING_EFFORT"] = "high"
 
         reset_tailoring_config()
         config = TailoringConfig(_env_file=None)
 
         assert config.llm_provider == "openai"
         assert config.llm_model == "gpt-4o"
+        assert config.llm_reasoning_effort == "low"

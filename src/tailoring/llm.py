@@ -234,6 +234,10 @@ class TailoringLLM:
             "timeout": self.config.llm_timeout,
         }
 
+        reasoning_effort = _normalize_reasoning_effort(self.config.llm_reasoning_effort)
+        if reasoning_effort is not None:
+            kwargs["reasoning_effort"] = reasoning_effort
+
         if self.config.llm_api_key:
             kwargs["api_key"] = self.config.llm_api_key
 
@@ -340,3 +344,14 @@ class TailoringLLM:
             return extracted
 
         return content
+
+
+def _normalize_reasoning_effort(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if not normalized:
+        return None
+    if normalized in {"off", "disabled", "0", "false"}:
+        return "disable"
+    return normalized

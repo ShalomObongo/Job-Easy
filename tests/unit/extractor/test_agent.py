@@ -290,6 +290,7 @@ class TestGetLLM:
             llm_api_key="config-api-key",
             llm_base_url="https://custom.endpoint.com/v1",
             llm_model="gpt-4o-mini",
+            llm_reasoning_effort="high",
         )
 
         with patch("browser_use.ChatOpenAI") as mock_chat_openai:
@@ -303,3 +304,28 @@ class TestGetLLM:
             assert call_kwargs["model"] == "gpt-4o-mini"
             assert call_kwargs["api_key"] == "config-api-key"
             assert call_kwargs["base_url"] == "https://custom.endpoint.com/v1"
+            assert call_kwargs["reasoning_effort"] == "high"
+
+    def test_get_llm_normalizes_disable_reasoning_effort(self, monkeypatch):
+        """get_llm should normalize disable -> none for Browser Use ChatOpenAI."""
+        from src.extractor.agent import get_llm
+        from src.extractor.config import ExtractorConfig
+
+        monkeypatch.delenv("BROWSER_USE_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+
+        config = ExtractorConfig(
+            _env_file=None,
+            llm_provider="openai",
+            llm_api_key="config-api-key",
+            llm_model="gpt-5-mini",
+            llm_reasoning_effort="disable",
+        )
+
+        with patch("browser_use.ChatOpenAI") as mock_chat_openai:
+            mock_chat_openai.return_value = MagicMock()
+            get_llm(config)
+            call_kwargs = mock_chat_openai.call_args[1]
+            assert call_kwargs["reasoning_effort"] == "none"

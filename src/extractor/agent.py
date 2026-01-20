@@ -258,12 +258,14 @@ def get_llm(config: ExtractorConfig | None = None) -> Any | None:
     api_key: str | None = None
     base_url: str | None = None
     model: str | None = None
+    reasoning_effort: str | None = None
     provider = "auto"
 
     if config:
         api_key = config.llm_api_key
         base_url = config.llm_base_url
         model = config.llm_model
+        reasoning_effort = getattr(config, "llm_reasoning_effort", None)
         provider = config.llm_provider.lower()
 
     # If provider is specified explicitly, use it
@@ -272,6 +274,7 @@ def get_llm(config: ExtractorConfig | None = None) -> Any | None:
             api_key or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY"),
             base_url,
             model,
+            reasoning_effort,
         )
     elif provider == "anthropic":
         return _create_anthropic_llm(
@@ -290,7 +293,7 @@ def get_llm(config: ExtractorConfig | None = None) -> Any | None:
     # If a base URL is configured, prefer OpenAI-compatible mode first (local servers).
     openai_api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY")
     if base_url or openai_api_key:
-        llm = _create_openai_llm(openai_api_key, base_url, model)
+        llm = _create_openai_llm(openai_api_key, base_url, model, reasoning_effort)
         if llm:
             return llm
 
@@ -311,7 +314,10 @@ def get_llm(config: ExtractorConfig | None = None) -> Any | None:
 
 
 def _create_openai_llm(
-    api_key: str | None, base_url: str | None, model: str | None
+    api_key: str | None,
+    base_url: str | None,
+    model: str | None,
+    reasoning_effort: str | None = None,
 ) -> Any | None:
     """Create an OpenAI LLM instance.
 
@@ -330,16 +336,35 @@ def _create_openai_llm(
 
     effective_api_key = api_key or "not-needed"
 
+    normalized_effort = _normalize_reasoning_effort(reasoning_effort)
+
     try:
         from browser_use import ChatOpenAI
 
-        return ChatOpenAI(
-            model=model or "gpt-4o",
-            api_key=effective_api_key,
-            base_url=base_url,
-        )
+        kwargs: dict[str, Any] = {
+            "model": model or "gpt-4o",
+            "api_key": effective_api_key,
+            "base_url": base_url,
+        }
+        if normalized_effort is not None:
+            kwargs["reasoning_effort"] = normalized_effort
+
+        return ChatOpenAI(**kwargs)
     except ImportError:
         return None
+
+
+def _normalize_reasoning_effort(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if not normalized:
+        return None
+    if normalized in {"disable", "disabled", "off", "0", "false"}:
+        return "none"
+    if normalized == "min":
+        return "minimal"
+    return normalized
 
 
 def _create_anthropic_llm(
