@@ -244,6 +244,23 @@ class TrackerRepository:
             )
             await conn.commit()
 
+    async def get_status_counts(self) -> dict[ApplicationStatus, int]:
+        """Return record counts grouped by status."""
+        async with self._get_connection() as conn:
+            cursor = await conn.execute(
+                "SELECT status, COUNT(*) AS count FROM tracker GROUP BY status"
+            )
+            rows = await cursor.fetchall()
+
+        counts: dict[ApplicationStatus, int] = {}
+        for row in rows:
+            try:
+                status = ApplicationStatus(row["status"])
+            except Exception:
+                continue
+            counts[status] = int(row["count"]) if row["count"] is not None else 0
+        return counts
+
     async def list_recent(
         self,
         limit: int = 10,
@@ -325,7 +342,7 @@ class TrackerRepository:
             company=row["company"],
             role_title=row["role_title"],
             status=ApplicationStatus(row["status"]),
-            first_seen_at=parse_datetime(row["first_seen_at"]),
+            first_seen_at=parse_datetime(row["first_seen_at"]) or datetime.now(),
             location=row["location"],
             last_attempt_at=parse_datetime(row["last_attempt_at"]),
             submitted_at=parse_datetime(row["submitted_at"]),

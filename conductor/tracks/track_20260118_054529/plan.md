@@ -6,127 +6,127 @@
 
 ## Phase 1: CLI Foundations (Shared Helpers + Run Dirs)
 
-- [ ] Task: Define run directory + artifact conventions
-    - [ ] Decide a run_id strategy for non-fingerprint flows (timestamp-based)
-    - [ ] Ensure all commands can write into `artifacts/runs/<run_id>/` by default
-    - [ ] Define standard artifact filenames per command:
-        - [ ] `jd.json` (extract)
-        - [ ] `fit_result.json` (score)
-        - [ ] `tailoring_plan.json` + PDFs + `review_packet.json` (tailor)
-        - [ ] `application_result.json` + `conversation.jsonl` (apply)
-        - [ ] `queue.json` (queue)
-- [ ] Task: Add file-first input helpers
-    - [ ] Helper to load profile from `--profile` (YAML/JSON per existing ProfileService behavior)
-    - [ ] Helper to load JD from `--jd` path
-    - [ ] Helper to validate resume/cover-letter file paths for `apply`
-- [ ] Task: Wire CLI subcommand skeletons
-    - [ ] Add argparse subparsers for: `extract`, `score`, `tailor`, `apply`, `queue`, `tracker`
-    - [ ] Keep existing `single` and `autonomous` behavior unchanged
+- [x] Task: Define run directory + artifact conventions
+    - [x] Decide a run_id strategy for non-fingerprint flows (timestamp-based)
+    - [x] Ensure all commands can write into `artifacts/runs/<run_id>/` by default
+    - [x] Define standard artifact filenames per command:
+        - [x] `jd.json` (extract)
+        - [x] `fit_result.json` (score)
+        - [x] `tailoring_plan.json` + PDFs + `review_packet.json` (tailor)
+        - [x] `application_result.json` + `conversation.jsonl` (apply)
+        - [x] `queue.json` (queue)
+- [x] Task: Add file-first input helpers
+    - [x] Helper to load profile from `--profile` (YAML/JSON per existing ProfileService behavior)
+    - [x] Helper to load JD from `--jd` path
+    - [x] Helper to validate resume/cover-letter file paths for `apply`
+- [x] Task: Wire CLI subcommand skeletons
+    - [x] Add argparse subparsers for: `extract`, `score`, `tailor`, `apply`, `queue`, `tracker`
+    - [x] Keep existing `single` and `autonomous` behavior unchanged
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: CLI Foundations' (Protocol in workflow.md)
 
 ---
 
 ## Phase 2: `job-easy extract` (URL -> jd.json)
 
-- [ ] Task: Write tests for `extract` CLI wiring
-    - [ ] `job-easy extract <url>` calls extractor service
-    - [ ] Writes `jd.json` into a run dir by default
-    - [ ] Prints a concise summary (company/title/location)
-- [ ] Task: Implement `extract` command
-    - [ ] Create run dir
-    - [ ] Call `JobExtractor.extract(url)` and persist `jd.json`
-    - [ ] Exit non-zero on extraction failure
+- [x] Task: Write tests for `extract` CLI wiring
+    - [x] `job-easy extract <url>` calls extractor service
+    - [x] Writes `jd.json` into a run dir by default
+    - [x] Prints a concise summary (company/title/location)
+- [x] Task: Implement `extract` command
+    - [x] Create run dir
+    - [x] Call `JobExtractor.extract(url)` and persist `jd.json`
+    - [x] Exit non-zero on extraction failure
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Extract Command' (Protocol in workflow.md)
 
 ---
 
 ## Phase 3: `job-easy score` (jd.json + profile -> fit_result.json)
 
-- [ ] Task: Write tests for `score` CLI wiring
-    - [ ] Requires `--jd` and `--profile`
-    - [ ] Prints formatted FitResult
-    - [ ] Writes `fit_result.json` into run dir
-- [ ] Task: Implement `score` command
-    - [ ] Load JD + profile
-    - [ ] Run `FitScoringService.evaluate()` and persist result
+- [x] Task: Write tests for `score` CLI wiring
+    - [x] Requires `--jd` and `--profile`
+    - [x] Prints formatted FitResult
+    - [x] Writes `fit_result.json` into run dir
+- [x] Task: Implement `score` command
+    - [x] Load JD + profile
+    - [x] Run `FitScoringService.evaluate()` and persist result
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Score Command' (Protocol in workflow.md)
 
 ---
 
 ## Phase 4: `job-easy tailor` (jd.json + profile -> PDFs)
 
-- [ ] Task: Write tests for `tailor` CLI wiring
-    - [ ] Requires `--jd` and `--profile`
-    - [ ] Supports `--no-cover-letter`
-    - [ ] Writes artifacts into run dir and prints file paths
-- [ ] Task: Implement `tailor` command
-    - [ ] Create TailoringService with output_dir=run_dir
-    - [ ] Run tailoring and persist key artifacts (plan/review packet + PDFs)
+- [x] Task: Write tests for `tailor` CLI wiring
+    - [x] Requires `--jd` and `--profile`
+    - [x] Supports `--no-cover-letter`
+    - [x] Writes artifacts into run dir and prints file paths
+- [x] Task: Implement `tailor` command
+    - [x] Create TailoringService with output_dir=run_dir
+    - [x] Run tailoring and persist key artifacts (plan/review packet + PDFs)
 - [ ] Task: Conductor - User Manual Verification 'Phase 4: Tailor Command' (Protocol in workflow.md)
 
 ---
 
 ## Phase 5: `job-easy apply` (runner only)
 
-- [ ] Task: Write tests for `apply` CLI wiring
-    - [ ] Requires `--resume`; optional `--cover-letter`
-    - [ ] Ensures `available_file_paths` is restricted to provided docs
-    - [ ] Writes `application_result.json` + conversation log
-- [ ] Task: Implement `apply` command
-    - [ ] Create run dir
-    - [ ] Run runner agent starting at URL with provided docs
-    - [ ] Preserve existing HITL submit gate + CAPTCHA/2FA behavior
+- [x] Task: Write tests for `apply` CLI wiring
+    - [x] Requires `--resume`; optional `--cover-letter`
+    - [x] Ensures `available_file_paths` is restricted to provided docs
+    - [x] Writes `application_result.json` + conversation log
+- [x] Task: Implement `apply` command
+    - [x] Create run dir
+    - [x] Run runner agent starting at URL with provided docs
+    - [x] Preserve existing HITL submit gate + CAPTCHA/2FA behavior
 - [ ] Task: Conductor - User Manual Verification 'Phase 5: Apply Command' (Protocol in workflow.md)
 
 ---
 
 ## Phase 6: `job-easy queue` (leads -> ranked queue)
 
-- [ ] Task: Write tests for `queue` CLI wiring
-    - [ ] Requires leads file + `--profile`
-    - [ ] Supports `--min-score`, `--include-skips`, `--limit`
-    - [ ] Writes `queue.json` and prints summary/stats
-- [ ] Task: Implement `queue` command
-    - [ ] Parse leads, build queue using QueueManager
-    - [ ] Apply limit and output stats + top-N preview
+- [x] Task: Write tests for `queue` CLI wiring
+    - [x] Requires leads file + `--profile`
+    - [x] Supports `--min-score`, `--include-skips`, `--limit`
+    - [x] Writes `queue.json` and prints summary/stats
+- [x] Task: Implement `queue` command
+    - [x] Parse leads, build queue using QueueManager
+    - [x] Apply limit and output stats + top-N preview
 - [ ] Task: Conductor - User Manual Verification 'Phase 6: Queue Command' (Protocol in workflow.md)
 
 ---
 
 ## Phase 7: `job-easy tracker` Utilities
 
-- [ ] Task: Write tests for tracker subcommands
-    - [ ] `tracker lookup` by fingerprint and by URL
-    - [ ] `tracker recent` with limit and optional status filter
-    - [ ] `tracker stats` counts by status
-    - [ ] `tracker mark` updates status and optional proof fields
-- [ ] Task: Implement tracker subcommands
-    - [ ] Add argparse structure: `tracker {lookup,recent,stats,mark}`
-    - [ ] Implement DB reads/writes via TrackerRepository/TrackerService where appropriate
-    - [ ] Ensure these commands run without LLM configuration
+- [x] Task: Write tests for tracker subcommands
+    - [x] `tracker lookup` by fingerprint and by URL
+    - [x] `tracker recent` with limit and optional status filter
+    - [x] `tracker stats` counts by status
+    - [x] `tracker mark` updates status and optional proof fields
+- [x] Task: Implement tracker subcommands
+    - [x] Add argparse structure: `tracker {lookup,recent,stats,mark}`
+    - [x] Implement DB reads/writes via TrackerRepository/TrackerService where appropriate
+    - [x] Ensure these commands run without LLM configuration
 - [ ] Task: Conductor - User Manual Verification 'Phase 7: Tracker Command' (Protocol in workflow.md)
 
 ---
 
 ## Phase 8: Documentation Refresh (README + docs)
 
-- [ ] Task: Update `README.md` (full quickstart + command reference)
-    - [ ] Install + venv + dev deps
-    - [ ] Required env vars + `.env` guidance
-    - [ ] Profile setup
-    - [ ] Command reference for: single/autonomous/extract/score/tailor/apply/queue/tracker
-    - [ ] Artifact layout explanation
-    - [ ] Safety guarantees section
-- [ ] Task: Update supporting docs
-    - [ ] Update `docs/dev.md` to include new commands for dev workflows
-    - [ ] Update `docs/runner-manual-test.md` to reference `apply` and offline reruns
+- [x] Task: Update `README.md` (full quickstart + command reference)
+    - [x] Install + venv + dev deps
+    - [x] Required env vars + `.env` guidance
+    - [x] Profile setup
+    - [x] Command reference for: single/autonomous/extract/score/tailor/apply/queue/tracker
+    - [x] Artifact layout explanation
+    - [x] Safety guarantees section
+- [x] Task: Update supporting docs
+    - [x] Update `docs/dev.md` to include new commands for dev workflows
+    - [x] Update `docs/runner-manual-test.md` to reference `apply` and offline reruns
 - [ ] Task: Conductor - User Manual Verification 'Phase 8: Documentation' (Protocol in workflow.md)
 
 ---
 
 ## Phase 9: Quality Gates
 
-- [ ] Task: Run unit tests (non-integration)
-- [ ] Task: Run ruff lint + format check
-- [ ] Task: Smoke-check CLI help output
+- [x] Task: Run unit tests (non-integration)
+- [x] Task: Run ruff lint + format check
+- [x] Task: Smoke-check CLI help output
 - [ ] Task: Conductor - User Manual Verification 'Phase 9: Verification' (Protocol in workflow.md)

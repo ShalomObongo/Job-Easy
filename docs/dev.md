@@ -120,6 +120,18 @@ When done:
 
 ## 6) Engineering standards (DoD per story)
 
+### Useful local commands
+
+- CLI help (shows all flows): `python -m src --help`
+- Component flows:
+  - Extract only: `python -m src extract "<JOB_URL>"`
+  - Score only: `python -m src score --jd artifacts/runs/<run_id>/jd.json --profile profiles/profile.yaml`
+  - Tailor only: `python -m src tailor --jd artifacts/runs/<run_id>/jd.json --profile profiles/profile.yaml`
+  - Apply only: `python -m src apply "<URL>" --resume resume.pdf --cover-letter cover.pdf`
+  - Build queue only: `python -m src queue leads.txt --profile profiles/profile.yaml`
+  - Tracker utilities: `python -m src tracker stats`
+
+
 Each story should include:
 - Implementation
 - Minimal tests (unit or integration)

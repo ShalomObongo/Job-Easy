@@ -19,6 +19,7 @@ This checklist validates the **dynamic application runner** end-to-end on real j
 
 ## Test 1: Job posting → “Apply” → multi-step flow
 
+Option A (end-to-end):
 1. Run:
    - `python -m src single "<JOB_POSTING_URL>"`
 2. Expect:
@@ -32,14 +33,30 @@ This checklist validates the **dynamic application runner** end-to-end on real j
    - `artifacts/runs/<fingerprint>/conversation.jsonl`
    - `artifacts/runs/<fingerprint>/application_result.json`
 
-## Test 2: Direct application form (single page)
-
-1. Run:
-   - `python -m src single "<APPLICATION_FORM_URL>"`
-2. Expect:
+Option B (runner-only):
+1. Prepare:
+   - Have `resume.pdf` (and optionally `cover.pdf`) ready
+2. Run:
+   - `python -m src apply "<JOB_POSTING_OR_APPLICATION_URL>" --resume resume.pdf --cover-letter cover.pdf`
+3. Expect:
    - Runner fills required fields best-effort
    - Unknown questions trigger a prompt and are saved to the Q&A bank
    - Final submit gate requires typing **YES**
+
+## Test 2: Direct application form (single page)
+
+Option A (end-to-end):
+1. Run:
+   - `python -m src single "<APPLICATION_FORM_URL>"`
+
+Option B (runner-only):
+1. Run:
+   - `python -m src apply "<APPLICATION_FORM_URL>" --resume resume.pdf`
+
+Expect:
+- Runner fills required fields best-effort
+- Unknown questions trigger a prompt and are saved to the Q&A bank
+- Final submit gate requires typing **YES**
 
 ## Safety checks
 
