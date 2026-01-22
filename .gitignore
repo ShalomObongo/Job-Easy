@@ -77,6 +77,7 @@ venv.bak/
 # Project specific
 data/*.db
 data/*.sqlite
+artifacts/*.json
 artifacts/runs/*
 !artifacts/runs/.gitkeep
 artifacts/docs/*
@@ -104,3 +105,9 @@ data/qa_bank.json
 # Local leads files (often contain user-specific URLs)
 leads.txt
 *.leads.txt
+
+# Claude Code settings (user-specific)
+.claude/
+
+# Manual test files (user-specific)
+test_*_manual.py
