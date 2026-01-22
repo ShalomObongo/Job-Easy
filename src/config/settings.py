@@ -103,6 +103,19 @@ class Settings(BaseSettings):
         default="auto",
         description="Runner vision mode: 'auto', 'true', or 'false'",
     )
+    runner_assume_yes: bool = Field(
+        default=False,
+        description=(
+            "Assume 'yes' for non-submit prompts (fit skip/review and document approval). "
+            "Does NOT bypass duplicate checks, OTP/CAPTCHA prompts, or the final submit gate."
+        ),
+    )
+    runner_yolo_mode: bool = Field(
+        default=False,
+        description=(
+            "Enable runner YOLO mode (best-effort auto-answering for application questions)."
+        ),
+    )
     runner_llm_provider: str | None = Field(
         default=None,
         description="Runner LLM provider: 'openai', 'anthropic', 'browser_use', or 'auto'",

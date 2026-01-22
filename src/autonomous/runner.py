@@ -98,8 +98,14 @@ class BatchRunner:
                         item.status = QueueStatus.COMPLETED
                         processed += 1
                     else:
+                        run_kwargs: dict[str, Any] = {
+                            "job": item.job_description,
+                        }
+                        if self.profile is not None:
+                            run_kwargs["profile"] = self.profile
+
                         current_task = asyncio.create_task(
-                            self.single_job_service.run(item.url)
+                            self.single_job_service.run(item.url, **run_kwargs)
                         )
                         run_result = await current_task
 

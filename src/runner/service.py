@@ -8,12 +8,16 @@ from __future__ import annotations
 import contextlib
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+from urllib.parse import urlparse
 
+from src.extractor.models import JobDescription
 from src.hitl import tools as hitl
 from src.runner.agent import create_application_agent, create_browser, get_runner_llm
 from src.runner.domains import is_prohibited, record_allowed_domain
 from src.runner.models import ApplicationRunResult, RunStatus
+from src.runner.qa_bank import ScopeHint
+from src.runner.yolo import build_yolo_context
 from src.tailoring.config import TailoringConfig
 from src.tailoring.service import TailoringService
 from src.tracker.models import ApplicationStatus, SourceMode
@@ -21,6 +25,21 @@ from src.tracker.repository import TrackerRepository
 from src.tracker.service import TrackerService
 
 logger = logging.getLogger(__name__)
+
+
+def _build_qa_scope_hints(
+    *, fingerprint: str, company: str, job_url: str
+) -> list[ScopeHint]:
+    company_key = company.strip().lower()
+    domain = urlparse(job_url).netloc.strip().lower()
+
+    hints: list[ScopeHint] = [("job", fingerprint)]
+    if company_key:
+        hints.append(("company", company_key))
+    if domain:
+        hints.append(("domain", domain))
+    hints.append(("global", None))
+    return hints
 
 
 class SingleJobApplicationService:
@@ -47,7 +66,13 @@ class SingleJobApplicationService:
         self.tailoring_service = tailoring_service
         self.source_mode = source_mode
 
-    async def run(self, url: str) -> ApplicationRunResult:
+    async def run(
+        self,
+        url: str,
+        *,
+        job: JobDescription | None = None,
+        profile: Any | None = None,
+    ) -> ApplicationRunResult:
         """Run a single job application flow from URL."""
         run_notes: list[str] = []
         prohibited_domains = list(getattr(self.settings, "prohibited_domains", []))
@@ -85,8 +110,11 @@ class SingleJobApplicationService:
                 reason=reason or None,
             )
 
-        job = await self.extractor.extract(url)
-        if job is None:
+        job_obj = job
+        if job_obj is None:
+            job_obj = await self.extractor.extract(url)
+
+        if job_obj is None:
             if fingerprint:
                 await self.tracker_service.update_status(
                     fingerprint, ApplicationStatus.FAILED
@@ -97,7 +125,9 @@ class SingleJobApplicationService:
                 errors=["Job extraction failed"],
             )
 
-        start_url = job.apply_url or job.job_url or url
+        assert job_obj is not None
+
+        start_url = job_obj.apply_url or job_obj.job_url or url
         if start_url != url:
             run_notes.append(f"canonical_start_url={start_url}")
 
@@ -105,9 +135,9 @@ class SingleJobApplicationService:
         if duplicate is None:
             canonical_duplicate = await self.tracker_service.check_duplicate(
                 url=start_url,
-                company=job.company,
-                role=job.role_title,
-                location=job.location,
+                company=job_obj.company,
+                role=job_obj.role_title,
+                location=job_obj.location,
             )
             if (
                 canonical_duplicate is not None
@@ -138,23 +168,27 @@ class SingleJobApplicationService:
         if fingerprint is None:
             fingerprint = await self.tracker_service.create_record(
                 url=start_url,
-                company=job.company,
-                role=job.role_title,
-                location=job.location,
+                company=job_obj.company,
+                role=job_obj.role_title,
+                location=job_obj.location,
                 source_mode=self.source_mode,
             )
+
+        fingerprint_str = cast(str, fingerprint)
 
         run_dir = (
             Path(getattr(self.settings, "output_dir", Path("./artifacts")))
             / "runs"
-            / fingerprint
+            / fingerprint_str
         )
         run_dir.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(Exception):
-            job.save_json(run_dir / "jd.json")
+            job_obj.save_json(run_dir / "jd.json")
 
-        profile = self.profile_service.load_profile()
-        fit = self.scoring_service.evaluate(job, profile)
+        profile_obj = (
+            profile if profile is not None else self.profile_service.load_profile()
+        )
+        fit = self.scoring_service.evaluate(job_obj, profile_obj)
 
         fit_summary_func = getattr(self.scoring_service, "format_result", None)
         fit_summary = (
@@ -163,13 +197,19 @@ class SingleJobApplicationService:
             else getattr(fit, "reasoning", str(fit))
         )
 
+        assume_yes = bool(getattr(self.settings, "runner_assume_yes", False))
+
         if fit.recommendation == "skip":
             logger.info("Fit scoring result:\n%s", fit_summary)
 
-            proceed = hitl.prompt_yes_no(
-                "Fit scoring recommends SKIP. Proceed with application anyway?\n\n"
-                f"{fit_summary}"
-            )
+            if assume_yes:
+                proceed = True
+                run_notes.append("assume_yes_fit_skip")
+            else:
+                proceed = hitl.prompt_yes_no(
+                    "Fit scoring recommends SKIP. Proceed with application anyway?\n\n"
+                    f"{fit_summary}"
+                )
             if not proceed:
                 await self.tracker_service.update_status(
                     fingerprint, ApplicationStatus.SKIPPED
@@ -184,9 +224,13 @@ class SingleJobApplicationService:
 
         if fit.recommendation == "review":
             logger.info("Fit scoring result:\n%s", fit_summary)
-            proceed = hitl.prompt_yes_no(
-                f"Fit score recommends REVIEW. Proceed with application?\n{fit.reasoning}"
-            )
+            if assume_yes:
+                proceed = True
+                run_notes.append("assume_yes_fit_review")
+            else:
+                proceed = hitl.prompt_yes_no(
+                    f"Fit score recommends REVIEW. Proceed with application?\n{fit.reasoning}"
+                )
             if not proceed:
                 await self.tracker_service.update_status(
                     fingerprint, ApplicationStatus.SKIPPED
@@ -198,7 +242,7 @@ class SingleJobApplicationService:
             tailoring_config = TailoringConfig(output_dir=run_dir)
             tailoring_service = TailoringService(config=tailoring_config)
 
-        tailoring_result = await tailoring_service.tailor(profile, job)
+        tailoring_result = await tailoring_service.tailor(profile_obj, job_obj)
         if not getattr(tailoring_result, "success", False):
             await self.tracker_service.update_status(
                 fingerprint, ApplicationStatus.FAILED
@@ -215,9 +259,13 @@ class SingleJobApplicationService:
         resume_path = getattr(tailoring_result, "resume_path", None)
         cover_letter_path = getattr(tailoring_result, "cover_letter_path", None)
 
-        approved = hitl.prompt_yes_no(
-            "Documents are ready. Approve resume/cover letter for upload?"
-        )
+        if assume_yes:
+            approved = True
+            run_notes.append("assume_yes_documents")
+        else:
+            approved = hitl.prompt_yes_no(
+                "Documents are ready. Approve resume/cover letter for upload?"
+            )
         if not approved:
             return ApplicationRunResult(
                 success=True,
@@ -225,12 +273,26 @@ class SingleJobApplicationService:
                 notes=run_notes,
             )
 
+        yolo_mode = bool(getattr(self.settings, "runner_yolo_mode", False))
+        yolo_context = (
+            build_yolo_context(job=job_obj, profile=profile_obj) if yolo_mode else None
+        )
+
+        qa_scope_hints = _build_qa_scope_hints(
+            fingerprint=fingerprint_str,
+            company=job_obj.company,
+            job_url=start_url,
+        )
+
         result = await self._run_application_flow(
             job_url=start_url,
             run_dir=run_dir,
-            profile=profile,
+            profile=profile_obj,
             resume_path=resume_path,
             cover_letter_path=cover_letter_path,
+            qa_scope_hints=qa_scope_hints,
+            yolo_mode=yolo_mode,
+            yolo_context=yolo_context,
         )
 
         if result.status == RunStatus.SUBMITTED:
@@ -260,6 +322,9 @@ class SingleJobApplicationService:
         profile: Any,
         resume_path: str | None,
         cover_letter_path: str | None,
+        qa_scope_hints: list[ScopeHint] | None = None,
+        yolo_mode: bool = False,
+        yolo_context: dict[str, Any] | None = None,
     ) -> ApplicationRunResult:
         """Run the Browser Use application agent and persist artifacts."""
         prohibited_domains = list(getattr(self.settings, "prohibited_domains", []))
@@ -275,7 +340,7 @@ class SingleJobApplicationService:
                 errors=["No LLM configured for runner"],
             )
 
-        sensitive_data: dict[str, str] = {}
+        sensitive_data: dict[str, str | dict[str, str]] = {}
         name_value = getattr(profile, "name", None)
         if name_value:
             name_str = str(name_value).strip()
@@ -296,7 +361,22 @@ class SingleJobApplicationService:
             if value:
                 sensitive_data[key] = str(value)
 
-        available_file_paths = [p for p in [resume_path, cover_letter_path] if p]
+        def _expand_upload_paths(paths: list[str]) -> list[str]:
+            expanded: list[str] = []
+            seen: set[str] = set()
+            for raw in paths:
+                raw_str = str(raw).strip()
+                if not raw_str:
+                    continue
+                for candidate in (raw_str, str(Path(raw_str).expanduser().resolve())):
+                    if candidate in seen:
+                        continue
+                    seen.add(candidate)
+                    expanded.append(candidate)
+            return expanded
+
+        upload_paths = [p for p in [resume_path, cover_letter_path] if p]
+        available_file_paths = _expand_upload_paths(upload_paths)
         conversation_path = run_dir / "conversation.jsonl"
 
         browser = None
@@ -313,7 +393,12 @@ class SingleJobApplicationService:
                 qa_bank_path=getattr(
                     self.settings, "qa_bank_path", Path("./data/qa_bank.json")
                 ),
-                sensitive_data=sensitive_data,
+                qa_scope_hints=qa_scope_hints,
+                sensitive_data=cast(
+                    dict[str, str | dict[str, str]] | None, sensitive_data
+                ),
+                yolo_mode=yolo_mode,
+                yolo_context=yolo_context,
                 max_failures=getattr(self.settings, "runner_max_failures", 3),
                 max_actions_per_step=getattr(
                     self.settings, "runner_max_actions_per_step", 4

@@ -531,7 +531,7 @@ def record_allowed_domain(url: str, allowlist_log_path: str | Path) -> str | Non
 
 **Purpose**: Store previously answered application questions so future runs can reuse answers without prompting the user again.
 
-**Storage Format**: JSON file with entries array:
+**Storage Format**: JSON file with a scoped `entries` array:
 
 ```json
 {
@@ -539,11 +539,33 @@ def record_allowed_domain(url: str, allowlist_log_path: str | Path) -> str | Non
     {
       "question": "What is your desired salary?",
       "answer": "$120,000",
-      "context": "optional context"
+      "context": null,
+      "scope_type": "global",
+      "scope_key": null,
+      "source": "user",
+      "category": "compensation"
+    },
+    {
+      "question": "Why do you want to work here?",
+      "answer": "...",
+      "context": null,
+      "scope_type": "job",
+      "scope_key": "abc123",
+      "source": "yolo",
+      "category": "motivation"
     }
   ]
 }
 ```
+
+**Scoping**:
+- `job`: most specific; uses the tracker fingerprint
+- `company`: normalized company name (lowercase)
+- `domain`: ATS hostname (e.g. `boards.greenhouse.io`)
+- `global`: safe across companies
+
+**Motivation Safety**:
+- Entries with `category=motivation` are never returned when `scope_type=global` (prevents cross-company reuse of company-specific answers).
 
 **Question Normalization**: Questions are normalized for stable lookup:
 - Lowercase
@@ -563,38 +585,63 @@ class QABank:
     def save(self) -> None:
         """Persist the Q&A bank to disk deterministically."""
 
-    def get_answer(self, question: str, _context: str | None = None) -> str | None:
+    def get_answer(
+        self,
+        question: str,
+        _context: str | None = None,
+        scope_hints: list[tuple[str, str | None]] | None = None,
+        category: str | None = None,
+    ) -> str | None:
         """Get a saved answer for a question (best-effort)."""
 
     def record_answer(
-        self, question: str, answer: str, context: str | None = None
+        self,
+        question: str,
+        answer: str,
+        context: str | None = None,
+        *,
+        scope_type: str = "global",
+        scope_key: str | None = None,
+        source: str | None = None,
+        category: str | None = None,
     ) -> None:
         """Record an answer and persist to disk."""
 ```
 
 **Integration with Browser Use Agent**:
 
-The Q&A bank is exposed as a custom tool (`resolve_answer`) in the Browser Use agent:
+The Q&A bank is exposed as custom tools in the Browser Use agent:
 
 ```python
 @tools.action(description="Resolve an answer for an application question from the saved Q&A bank.")
-def resolve_answer(question: str, context: str | None = None) -> str:
+def resolve_answer(question: str, context: str | None = None, category: str | None = None) -> str:
     """
     Resolve an answer for an application question.
 
     Flow:
-    1. Check Q&A bank for existing answer
+    1. Check Q&A bank for an existing scoped answer
     2. If found → Return cached answer
     3. If not found:
-       - Prompt user for answer
-       - Validate answer (not blank, not "make it up", not "invent")
-       - Save to Q&A bank
-       - Return answer
+       - Non-YOLO mode: prompt the user and save the answer
+       - YOLO mode: generate a best-effort answer from the injected job+user context and persist it (never prompts; may still return an empty string when not possible)
 
     Returns:
-        Answer string (from cache or user input)
+        Answer string (may be empty when not possible)
     """
 ```
+
+The agent can also persist generated answers via a `record_answer` tool.
+
+### 5.1 Runner YOLO Mode (Best-Effort Auto-Answering)
+
+Enable YOLO mode via either:
+- `RUNNER_YOLO_MODE=true`
+- `python -m src single <url> --yolo`
+- `python -m src autonomous <leads.txt> --yolo`
+
+When enabled:
+- Runner injects a job+user context JSON payload into the agent prompt.
+- The agent should avoid prompting for normal questions; only HITL gates remain (final submit confirmation, OTP prompts, CAPTCHA/2FA manual intervention).
 
 ## API / Interface Documentation
 
@@ -1280,4 +1327,3 @@ Key features:
 - Comprehensive error handling and retry logic
 
 For production use, always configure prohibited domains, review allowlist logs, and monitor conversation artifacts for debugging and compliance.
-

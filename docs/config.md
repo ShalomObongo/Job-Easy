@@ -229,8 +229,9 @@ Configuration for the browser automation runner (application form filling).
 | `runner_max_actions_per_step` | `int` | `4` | Max actions per agent step (form fill batching) |
 | `runner_step_timeout` | `int` | `120` | Timeout per runner step in seconds |
 | `runner_use_vision` | `str` | `"auto"` | Runner vision mode: 'auto', 'true', or 'false' |
+| `runner_yolo_mode` | `bool` | `False` | Enable YOLO mode (best-effort auto-answering) |
 
-**Environment Variables**: `RUNNER_MAX_FAILURES`, `RUNNER_MAX_ACTIONS_PER_STEP`, `RUNNER_STEP_TIMEOUT`, `RUNNER_USE_VISION`
+**Environment Variables**: `RUNNER_MAX_FAILURES`, `RUNNER_MAX_ACTIONS_PER_STEP`, `RUNNER_STEP_TIMEOUT`, `RUNNER_USE_VISION`, `RUNNER_ASSUME_YES`, `RUNNER_YOLO_MODE`
 
 **Validation**:
 - `runner_max_failures`: Must be > 0
@@ -368,6 +369,8 @@ Configure application logging level.
 | `RUNNER_MAX_ACTIONS_PER_STEP` | int | `4` | config | Max actions per step |
 | `RUNNER_STEP_TIMEOUT` | int | `120` | config | Step timeout (seconds) |
 | `RUNNER_USE_VISION` | str | `"auto"` | config | Vision mode |
+| `RUNNER_ASSUME_YES` | bool | `false` | config | Assume yes for fit/doc prompts (final submit still gated) |
+| `RUNNER_YOLO_MODE` | bool | `false` | config | Enable runner YOLO mode |
 | `RUNNER_LLM_PROVIDER` | str | `None` | config | Runner LLM provider |
 | `RUNNER_LLM_BASE_URL` | str | `None` | config | Runner LLM base URL |
 | `RUNNER_LLM_API_KEY` | str | `None` | config | Runner LLM API key |

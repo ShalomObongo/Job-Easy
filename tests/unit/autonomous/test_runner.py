@@ -37,8 +37,9 @@ async def test_batch_runner_processes_jobs_sequentially(tmp_path: Path) -> None:
 
     called: list[str] = []
 
-    async def _run(url: str):
+    async def _run(url: str, *, job=None, _profile=None):
         called.append(url)
+        assert job is not None
         return ApplicationRunResult(success=True, status=RunStatus.SUBMITTED)
 
     single_job_service = AsyncMock()
@@ -69,10 +70,12 @@ async def test_batch_runner_continues_after_individual_job_failure(
 
     called: list[str] = []
 
-    async def _run(url: str):
+    async def _run(url: str, *, job=None, profile=None):
         called.append(url)
         if url.endswith("/2"):
             raise RuntimeError("boom")
+        assert job is not None
+        assert profile is None
         return ApplicationRunResult(success=True, status=RunStatus.SUBMITTED)
 
     single_job_service = AsyncMock()
@@ -124,6 +127,33 @@ async def test_batch_runner_dry_run_skips_browser_automation(tmp_path: Path) -> 
     assert (tmp_path / "runs").exists()
 
 
+async def test_batch_runner_passes_loaded_profile_to_single_job_service(
+    tmp_path: Path,
+) -> None:
+    queue = [_queued_job("https://example.com/jobs/1")]
+
+    loaded_profile = object()
+
+    async def _run(_url: str, *, job=None, profile=None):
+        assert job is not None
+        assert profile is loaded_profile
+        return ApplicationRunResult(success=True, status=RunStatus.SUBMITTED)
+
+    single_job_service = AsyncMock()
+    single_job_service.run = AsyncMock(side_effect=_run)
+
+    runner = BatchRunner(
+        single_job_service=single_job_service,
+        tailoring_service=None,
+        profile=loaded_profile,
+        output_dir=tmp_path,
+    )
+
+    result = await runner.run(queue, dry_run=False)
+
+    assert result.submitted == 1
+
+
 async def test_batch_runner_tracks_progress_counts_correctly(tmp_path: Path) -> None:
     queue = [
         _queued_job("https://example.com/jobs/1"),
@@ -131,11 +161,17 @@ async def test_batch_runner_tracks_progress_counts_correctly(tmp_path: Path) -> 
         _queued_job("https://example.com/jobs/3"),
     ]
 
-    async def _run(url: str):
+    async def _run(url: str, *, job=None, profile=None):
         if url.endswith("/1"):
+            assert job is not None
+            assert profile is None
             return ApplicationRunResult(success=True, status=RunStatus.SUBMITTED)
         if url.endswith("/2"):
+            assert job is not None
+            assert profile is None
             return ApplicationRunResult(success=True, status=RunStatus.SKIPPED)
+        assert job is not None
+        assert profile is None
         return ApplicationRunResult(
             success=False, status=RunStatus.FAILED, errors=["x"]
         )
@@ -165,7 +201,9 @@ async def test_batch_runner_handles_graceful_shutdown_on_cancelled_job(
         _queued_job("https://example.com/jobs/2"),
     ]
 
-    async def _run(_url: str):
+    async def _run(_url: str, *, job=None, profile=None):
+        assert job is not None
+        assert profile is None
         raise asyncio.CancelledError()
 
     single_job_service = AsyncMock()

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Python-3.12+-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/AI-Powered-purple?style=for-the-badge&logo=openai&logoColor=white" alt="AI Powered">
   <img src="https://img.shields.io/badge/Browser-Automation-orange?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Browser Automation">
@@ -97,6 +97,12 @@ cp profiles/profile.example.yaml profiles/profile.yaml  # Add your info
 # Single job - full pipeline
 python -m src single https://jobs.lever.co/company/position-id
 
+# Single job (YOLO auto-answering)
+python -m src single https://jobs.lever.co/company/position-id --yolo
+
+# Single job (YOLO + auto-approve fit/doc prompts)
+python -m src single https://jobs.lever.co/company/position-id --yolo --yes
+
 # Batch mode - process multiple jobs
 python -m src autonomous leads.txt --dry-run
 ```
@@ -135,12 +141,17 @@ python -m src autonomous leads.txt --dry-run
 Process one job through the complete pipeline:
 
 ```bash
-# Full run with application
+# Full pipeline run
 python -m src single https://jobs.lever.co/company/position-id
 
-# Dry run - generate docs without applying
-python -m src single https://jobs.lever.co/company/position-id --dry-run
+# YOLO mode (best-effort auto-answering)
+python -m src single https://jobs.lever.co/company/position-id --yolo
+
+# YOLO + auto-approve fit score + document prompts
+python -m src single https://jobs.lever.co/company/position-id --yolo --yes
 ```
+
+Note: `--yes` only applies to non-submit prompts (fit skip/review and document approval). Final submit is still gated and requires typing `YES`.
 
 ### Autonomous Mode
 
@@ -150,8 +161,14 @@ Process a batch of jobs:
 # Process all jobs
 python -m src autonomous leads.txt
 
+# Dry run - generate docs without applying
+python -m src autonomous leads.txt --dry-run
+
 # With filters
-python -m src autonomous leads.txt --min-score 0.8 --limit 10 --dry-run
+python -m src autonomous leads.txt --min-score 0.8 --dry-run
+
+# YOLO mode (best-effort auto-answering)
+python -m src autonomous leads.txt --yolo
 ```
 
 **Leads file format:**
@@ -168,10 +185,10 @@ Run individual stages:
 | Command | What It Does |
 |---------|--------------|
 | `python -m src extract <url>` | 🔍 Extract job data |
-| `python -m src score --jd <file>` | 📊 Score job fit |
-| `python -m src tailor --jd <file>` | 📝 Generate documents |
-| `python -m src apply <url> --resume <file>` | ✅ Run application |
-| `python -m src queue <leads>` | 📋 Preview ranked batch |
+| `python -m src score --jd <file> --profile <file>` | 📊 Score job fit |
+| `python -m src tailor --jd <file> --profile <file>` | 📝 Generate documents |
+| `python -m src apply <url> --resume <file>` | ✅ Run application (runner only) |
+| `python -m src queue <leads> --profile <file>` | 📋 Preview ranked batch |
 | `python -m src tracker stats` | 📈 View statistics |
 
 ---

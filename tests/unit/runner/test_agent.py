@@ -2,18 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import browser_use
 
 from src.hitl.tools import create_hitl_tools
-from src.runner.agent import create_application_agent
+from src.runner.agent import create_application_agent, get_application_prompt
 from src.runner.models import ApplicationRunResult
 
 
 def test_creates_agent_with_tools_and_output_model_schema(
     tmp_path: Path, monkeypatch
 ) -> None:
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class DummyAgent:
         def __init__(self, *args, **kwargs):
@@ -36,7 +37,7 @@ def test_creates_agent_with_tools_and_output_model_schema(
         max_actions_per_step=5,
     )
 
-    kwargs = captured["kwargs"]
+    kwargs: dict[str, Any] = captured["kwargs"]
     assert kwargs["tools"] is tools
     assert kwargs["output_model_schema"] is ApplicationRunResult
 
@@ -44,7 +45,7 @@ def test_creates_agent_with_tools_and_output_model_schema(
 def test_agent_is_configured_for_batching_and_retries(
     tmp_path: Path, monkeypatch
 ) -> None:
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class DummyAgent:
         def __init__(self, *_args, **kwargs):
@@ -63,7 +64,7 @@ def test_agent_is_configured_for_batching_and_retries(
         max_actions_per_step=6,
     )
 
-    kwargs = captured["kwargs"]
+    kwargs: dict[str, Any] = captured["kwargs"]
     assert kwargs["max_failures"] == 9
     assert kwargs["max_actions_per_step"] == 6
 
@@ -71,7 +72,7 @@ def test_agent_is_configured_for_batching_and_retries(
 def test_passes_available_file_paths_limited_to_generated_artifacts(
     tmp_path: Path, monkeypatch
 ) -> None:
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class DummyAgent:
         def __init__(self, *_args, **kwargs):
@@ -97,7 +98,7 @@ def test_passes_available_file_paths_limited_to_generated_artifacts(
 
 
 def test_sets_save_conversation_path_per_run(tmp_path: Path, monkeypatch) -> None:
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class DummyAgent:
         def __init__(self, *_args, **kwargs):
@@ -124,7 +125,7 @@ def test_get_runner_llm_passes_reasoning_effort_override(monkeypatch) -> None:
     from src.extractor.config import ExtractorConfig
     from src.runner.agent import get_runner_llm
 
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     def fake_get_llm(config: ExtractorConfig):
         captured["config"] = config
@@ -133,7 +134,7 @@ def test_get_runner_llm_passes_reasoning_effort_override(monkeypatch) -> None:
     monkeypatch.setattr("src.runner.agent.get_llm", fake_get_llm)
     monkeypatch.setattr(
         "src.runner.agent.get_extractor_config",
-        lambda: ExtractorConfig(_env_file=None, llm_provider="openai"),
+        lambda: ExtractorConfig.model_validate({"llm_provider": "openai"}),
     )
 
     settings = SimpleNamespace(
@@ -145,7 +146,7 @@ def test_get_runner_llm_passes_reasoning_effort_override(monkeypatch) -> None:
     )
 
     get_runner_llm(settings)
-    config = captured["config"]
+    config: Any = captured["config"]
     assert isinstance(config, ExtractorConfig)
     assert config.llm_reasoning_effort == "high"
 
@@ -154,7 +155,7 @@ def test_get_runner_llm_falls_back_to_extractor_reasoning_effort(monkeypatch) ->
     from src.extractor.config import ExtractorConfig
     from src.runner.agent import get_runner_llm
 
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     def fake_get_llm(config: ExtractorConfig):
         captured["config"] = config
@@ -163,8 +164,8 @@ def test_get_runner_llm_falls_back_to_extractor_reasoning_effort(monkeypatch) ->
     monkeypatch.setattr("src.runner.agent.get_llm", fake_get_llm)
     monkeypatch.setattr(
         "src.runner.agent.get_extractor_config",
-        lambda: ExtractorConfig(
-            _env_file=None, llm_provider="openai", llm_reasoning_effort="medium"
+        lambda: ExtractorConfig.model_validate(
+            {"llm_provider": "openai", "llm_reasoning_effort": "medium"}
         ),
     )
 
@@ -177,6 +178,21 @@ def test_get_runner_llm_falls_back_to_extractor_reasoning_effort(monkeypatch) ->
     )
 
     get_runner_llm(settings)
-    config = captured["config"]
+    config: Any = captured["config"]
     assert isinstance(config, ExtractorConfig)
     assert config.llm_reasoning_effort == "medium"
+
+
+def test_get_application_prompt_includes_yolo_context() -> None:
+    prompt = get_application_prompt(
+        "https://example.com/jobs/123",
+        yolo_mode=True,
+        yolo_context={"job": {"company": "ACME"}, "user": {"name": "Jane"}},
+        available_file_paths=["artifacts/runs/example/resume.pdf"],
+    )
+
+    assert "YOLO mode is enabled" in prompt
+    assert '"company": "ACME"' in prompt
+    assert "Files available for upload" in prompt
+    assert "artifacts/runs/example/resume.pdf" in prompt
+    assert "confirm_submit" in prompt

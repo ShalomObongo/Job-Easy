@@ -52,7 +52,27 @@
 
 ---
 
+- [x] **Track: Runner YOLO Mode (Auto-Answer With Job + Profile Context)**
+*Link: [./tracks/runner_yolo_20260122_015613/](./tracks/runner_yolo_20260122_015613/)*
+
+---
+
 ## Completed Tracks (Narrative)
+
+### [runner_yolo_20260122_015613] Runner YOLO Mode (Auto-Answer With Job + Profile Context) ✅
+- **Type**: Feature
+- **Status**: Completed
+- **Completed**: 2026-01-22
+- **Spec**: [spec.md](./tracks/runner_yolo_20260122_015613/spec.md)
+- **Plan**: [plan.md](./tracks/runner_yolo_20260122_015613/plan.md)
+
+Opt-in runner mode that feeds the application agent a hybrid job + user context payload so it can auto-answer common form questions best-effort, while preserving safety gates (final submit confirmation, OTP/CAPTCHA handling). Adds scope-aware Q&A persistence to prevent cross-company answer reuse.
+
+**Deliverables:**
+- `/src/runner/yolo.py` - Context payload + deterministic YOLO answer resolver
+- `/src/runner/qa_bank.py` - Scope-aware Q&A storage and lookup precedence
+- `job-easy` CLI flags: `single --yolo`, `autonomous --yolo`, `apply --yolo`
+- Unit tests for scoping rules, safe option selection, and prompt safety gate
 
 ### [track_20260118_011233] Autonomous Mode (Queue + Scheduler) ✅
 - **Type**: Feature
@@ -172,3 +192,5 @@ Set up the foundational project structure including directory layout, Python pac
 ## Archived Tracks
 
 *No archived tracks.*
+
+---

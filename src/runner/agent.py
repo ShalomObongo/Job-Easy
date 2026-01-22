@@ -2,18 +2,33 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from src.extractor.agent import get_llm
 from src.extractor.config import ExtractorConfig, get_extractor_config
 from src.hitl.tools import create_hitl_tools
 from src.runner.models import ApplicationRunResult
-from src.runner.qa_bank import QABank
+from src.runner.qa_bank import QABank, ScopeHint, ScopeType
+from src.runner.yolo import classify_question, resolve_yolo_answer
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_use_vision(value: bool | str) -> bool | Literal["auto"]:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "auto":
+            return "auto"
+        if normalized in {"true", "1", "yes", "y"}:
+            return True
+        if normalized in {"false", "0", "no", "n"}:
+            return False
+        return "auto"
+    return bool(value)
 
 
 def create_browser(settings: Any, prohibited_domains: list[str] | None = None) -> Any:
@@ -111,7 +126,10 @@ def create_application_agent(
     available_file_paths: list[str] | None = None,
     save_conversation_path: str | Path | None = None,
     qa_bank_path: str | Path | None = None,
-    sensitive_data: dict[str, str] | None = None,
+    qa_scope_hints: list[ScopeHint] | None = None,
+    sensitive_data: dict[str, str | dict[str, str]] | None = None,
+    yolo_mode: bool = False,
+    yolo_context: dict[str, Any] | None = None,
     max_failures: int = 3,
     max_actions_per_step: int = 4,
     step_timeout: int = 120,
@@ -120,7 +138,12 @@ def create_application_agent(
     """Create a Browser Use Agent configured for generic application flows."""
     from browser_use import Agent
 
-    task = get_application_prompt(job_url)
+    task = get_application_prompt(
+        job_url,
+        yolo_mode=yolo_mode,
+        yolo_context=yolo_context,
+        available_file_paths=available_file_paths,
+    )
 
     if tools is None:
         tools = create_hitl_tools()
@@ -129,16 +152,65 @@ def create_application_agent(
         qa_bank = QABank(qa_bank_path)
         qa_bank.load()
 
-        @tools.action(
-            description=(
-                "Resolve an answer for an application question from the saved Q&A bank. "
-                "If missing, ask the human and save the answer for next time."
-            )
+        scope_hints: list[ScopeHint] = qa_scope_hints or [("global", None)]
+
+        def infer_category(question: str, category: str | None) -> str:
+            return str(category or classify_question(question)).strip().lower()
+
+        def pick_scope(category: str) -> tuple[ScopeType, str | None]:
+            # Motivation prompts are commonly company/job-specific; prefer the most specific
+            # scope available.
+            if category == "motivation":
+                for scope_type, scope_key in scope_hints:
+                    if scope_type != "global" and scope_key is not None:
+                        return scope_type, scope_key
+            return "global", None
+
+        resolve_description = (
+            "Resolve an answer for an application question from the saved Q&A bank. "
+            "If missing, ask the human and save the answer for next time."
+            if not yolo_mode
+            else "YOLO mode: retrieve or generate a best-effort answer (never prompts the human; may return an empty string when not possible)."
         )
-        def resolve_answer(question: str, context: str | None = None) -> str:
-            existing = qa_bank.get_answer(question, context)
+
+        @tools.action(description=resolve_description)
+        def resolve_answer(
+            question: str,
+            context: str | None = None,
+            category: str | None = None,
+            field_type: str | None = None,
+            options: list[str] | None = None,
+        ) -> str:
+            effective_category = infer_category(question, category)
+            existing = qa_bank.get_answer(
+                question,
+                context,
+                scope_hints=scope_hints,
+                category=effective_category,
+            )
             if existing is not None:
                 return existing
+
+            if yolo_mode:
+                answer, inferred_category = resolve_yolo_answer(
+                    question,
+                    yolo_context=yolo_context,
+                    field_type=field_type,
+                    options=options,
+                )
+                category_value = effective_category or inferred_category
+                if answer:
+                    scope_type, scope_key = pick_scope(category_value)
+                    qa_bank.record_answer(
+                        question,
+                        answer,
+                        context,
+                        scope_type=scope_type,
+                        scope_key=scope_key,
+                        source="yolo",
+                        category=category_value,
+                    )
+                return answer
 
             while True:
                 answer = input(f"{question} > ").strip()
@@ -154,8 +226,45 @@ def create_application_agent(
                         "Please provide your own truthful answer (I can't fabricate responses for applications)."
                     )
                     continue
-                qa_bank.record_answer(question, answer, context)
+
+                scope_type, scope_key = pick_scope(effective_category)
+                qa_bank.record_answer(
+                    question,
+                    answer,
+                    context,
+                    scope_type=scope_type,
+                    scope_key=scope_key,
+                    source="user",
+                    category=effective_category,
+                )
                 return answer
+
+        @tools.action(
+            description=(
+                "Record an answer in the Q&A bank for future reuse. "
+                "When in YOLO mode, use this after you generate an answer yourself."
+            )
+        )
+        def record_answer(
+            question: str,
+            answer: str,
+            category: str | None = None,
+        ) -> str:
+            answer_str = str(answer).strip()
+            if not answer_str:
+                return "rejected_blank"
+
+            effective_category = infer_category(question, category)
+            scope_type, scope_key = pick_scope(effective_category)
+            qa_bank.record_answer(
+                question,
+                answer_str,
+                scope_type=scope_type,
+                scope_key=scope_key,
+                source="yolo" if yolo_mode else "agent",
+                category=effective_category,
+            )
+            return "ok"
 
     return Agent(
         task=task,
@@ -165,16 +274,63 @@ def create_application_agent(
         output_model_schema=ApplicationRunResult,
         available_file_paths=available_file_paths,
         save_conversation_path=save_conversation_path,
-        sensitive_data=sensitive_data,
+        sensitive_data=cast(dict[str, str | dict[str, str]] | None, sensitive_data),
         max_failures=max_failures,
         max_actions_per_step=max_actions_per_step,
         step_timeout=step_timeout,
-        use_vision=use_vision,
+        use_vision=cast(bool | Literal["auto"], _normalize_use_vision(use_vision)),
     )
 
 
-def get_application_prompt(job_url: str) -> str:
+def get_application_prompt(
+    job_url: str,
+    *,
+    yolo_mode: bool = False,
+    yolo_context: dict[str, Any] | None = None,
+    available_file_paths: list[str] | None = None,
+) -> str:
     """Build the task prompt for a generic job application flow."""
+    yolo_section = ""
+    if yolo_mode:
+        context_json = "{}"
+        if yolo_context is not None:
+            try:
+                context_json = json.dumps(yolo_context, indent=2)
+            except Exception:
+                context_json = "{}"
+
+        yolo_section = f"""
+
+YOLO mode is enabled.
+
+You are given a job+user context payload to answer application questions best-effort.
+
+Job + user context (JSON):
+```json
+{context_json}
+```
+"""
+
+    file_section = ""
+    if available_file_paths:
+        lines = [str(p) for p in available_file_paths if str(p).strip()]
+        if lines:
+            joined = "\n".join(lines)
+            file_section = f"""
+
+Files available for upload (only use these exact paths):
+```
+{joined}
+```
+"""
+
+    form_rule_0 = (
+        "0) Never guess answers for application questions. If the answer is not one of "
+        "the placeholders above, use resolve_answer(question, context)."
+        if not yolo_mode
+        else "0) YOLO mode: use resolve_answer(...) to retrieve or generate best-effort answers from the provided job+user context. Do not prompt the human for normal questions."
+    )
+
     return f"""You are applying to a job starting from this URL: {job_url}
 
 Goal:
@@ -190,8 +346,12 @@ Applicant info (sensitive placeholders; never invent values):
 - location
 - linkedin_url
 
+{yolo_section}
+
+{file_section}
+
 Form filling rules:
-0) Never guess answers for application questions. If the answer is not one of the placeholders above, use resolve_answer(question, context).
+{form_rule_0}
 1) For dropdowns/combobox fields, do NOT type with input(). Instead:
    - Use dropdown_options(index) to see available options (if needed), then
    - Use select_dropdown(index, text) with the exact visible option text.
@@ -204,8 +364,9 @@ Flow handling:
 2) If this is a direct application form, start filling it.
 3) Handle multi-step flows (Next/Continue buttons, modals, multiple pages).
 4) Upload the provided resume/cover letter files when asked (only use available_file_paths).
-5) For unknown questions, use resolve_answer(question, context) to load from the Q&A bank; if missing,
-   it will ask the human and persist for next time.
+5) For unknown questions:
+   - Non-YOLO mode: use resolve_answer(question, context) to load from the Q&A bank; if missing, it will ask the human and persist for next time.
+   - YOLO mode: call resolve_answer(...) to retrieve or generate a best-effort answer (it may return "" when not possible).
 6) If CAPTCHA/2FA appears, stop and ask the user for manual help; do not bypass.
 
 Submit gate (required):

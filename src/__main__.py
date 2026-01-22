@@ -7,6 +7,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 from src import __version__
 from src.config.settings import Settings
@@ -100,6 +101,19 @@ For more information, see the documentation in docs/
         nargs="?",
         help="URL of the job posting to apply to",
     )
+    single_parser.add_argument(
+        "--yolo",
+        action="store_true",
+        help="Enable runner YOLO mode (best-effort auto-answering)",
+    )
+    single_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help=(
+            "Assume 'yes' for fit-skip/review and document-approval prompts "
+            "(final submit still requires typing YES)"
+        ),
+    )
 
     # Autonomous mode
     autonomous_parser = subparsers.add_parser(
@@ -131,6 +145,11 @@ For more information, see the documentation in docs/
         "--yes",
         action="store_true",
         help="Skip confirmation prompt before processing",
+    )
+    autonomous_parser.add_argument(
+        "--yolo",
+        action="store_true",
+        help="Enable runner YOLO mode (best-effort auto-answering)",
     )
 
     # Component mode: extract
@@ -215,6 +234,17 @@ For more information, see the documentation in docs/
         type=Path,
         default=None,
         help="Optional path to profile (YAML or JSON) for form filling",
+    )
+    apply_parser.add_argument(
+        "--jd",
+        type=Path,
+        default=None,
+        help="Optional path to jd.json (required for --yolo)",
+    )
+    apply_parser.add_argument(
+        "--yolo",
+        action="store_true",
+        help="Enable runner YOLO mode (requires --profile and --jd)",
     )
     apply_parser.add_argument(
         "--out-run-dir",
@@ -380,6 +410,12 @@ def main(args: list[str] | None = None) -> int:
     # Configure logging
     log_level = parsed.log_level or settings.log_level
     logger = configure_logging(level=log_level)
+
+    if getattr(parsed, "yolo", False):
+        settings.runner_yolo_mode = True
+
+    if getattr(parsed, "yes", False):
+        settings.runner_assume_yes = True
 
     # If no mode specified, show help
     if parsed.mode is None:
@@ -547,7 +583,8 @@ def main(args: list[str] | None = None) -> int:
         if getattr(parsed, "cover_letter", None):
             available_file_paths.append(str(parsed.cover_letter))
 
-        sensitive_data = {}
+        sensitive_data: dict[str, str | dict[str, str]] = {}
+        profile = None
         if getattr(parsed, "profile", None):
             from src.scoring.profile import ProfileService
 
@@ -578,6 +615,53 @@ def main(args: list[str] | None = None) -> int:
         browser = None
         try:
             browser = create_browser(settings, prohibited_domains=prohibited)
+
+            yolo_mode = bool(getattr(settings, "runner_yolo_mode", False))
+            yolo_context = None
+
+            domain = urlparse(parsed.url).netloc.strip().lower()
+            qa_scope_hints = []
+
+            if yolo_mode:
+                if profile is None or getattr(parsed, "jd", None) is None:
+                    print(
+                        "Error: --yolo requires --profile and --jd",
+                        file=sys.stderr,
+                    )
+                    return 1
+
+                from src.extractor.models import JobDescription
+                from src.runner.yolo import build_yolo_context
+                from src.tracker.fingerprint import compute_fingerprint, extract_job_id
+
+                jd_data = _load_json(parsed.jd)
+                job = JobDescription.from_dict(jd_data)
+
+                job_id = job.job_id or extract_job_id(
+                    job.apply_url or job.job_url or parsed.url
+                )
+                job_fingerprint = compute_fingerprint(
+                    url=job.apply_url or job.job_url or parsed.url,
+                    job_id=job_id,
+                    company=job.company,
+                    role=job.role_title,
+                    location=job.location,
+                )
+
+                company_key = str(job.company or "").strip().lower()
+                qa_scope_hints.append(("job", job_fingerprint))
+                if company_key:
+                    qa_scope_hints.append(("company", company_key))
+                if domain:
+                    qa_scope_hints.append(("domain", domain))
+                qa_scope_hints.append(("global", None))
+
+                yolo_context = build_yolo_context(job=job, profile=profile)
+            else:
+                if domain:
+                    qa_scope_hints.append(("domain", domain))
+                qa_scope_hints.append(("global", None))
+
             agent = create_application_agent(
                 job_url=parsed.url,
                 browser=browser,
@@ -588,7 +672,10 @@ def main(args: list[str] | None = None) -> int:
                 qa_bank_path=getattr(
                     settings, "qa_bank_path", Path("./data/qa_bank.json")
                 ),
+                qa_scope_hints=qa_scope_hints,
                 sensitive_data=sensitive_data or None,
+                yolo_mode=yolo_mode,
+                yolo_context=yolo_context,
                 max_failures=getattr(settings, "runner_max_failures", 3),
                 max_actions_per_step=getattr(
                     settings, "runner_max_actions_per_step", 4

@@ -28,6 +28,8 @@ class TestSettingsDefaults:
             "RUNNER_MAX_ACTIONS_PER_STEP",
             "RUNNER_STEP_TIMEOUT",
             "RUNNER_USE_VISION",
+            "RUNNER_ASSUME_YES",
+            "RUNNER_YOLO_MODE",
             "RUNNER_LLM_PROVIDER",
             "RUNNER_LLM_API_KEY",
             "RUNNER_LLM_BASE_URL",
@@ -41,7 +43,7 @@ class TestSettingsDefaults:
         try:
             from src.config.settings import Settings
 
-            settings = Settings(_env_file=None)
+            settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
             # Check defaults
             assert settings.mode == "single"
@@ -59,6 +61,8 @@ class TestSettingsDefaults:
             assert settings.runner_max_actions_per_step == 4
             assert settings.runner_step_timeout == 120
             assert settings.runner_use_vision == "auto"
+            assert settings.runner_assume_yes is False
+            assert settings.runner_yolo_mode is False
             assert settings.runner_llm_provider is None
             assert settings.runner_llm_api_key is None
             assert settings.runner_llm_base_url is None
@@ -80,7 +84,7 @@ class TestSettingsFromEnvironment:
 
         from src.config.settings import Settings
 
-        settings = Settings(_env_file=None)
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.mode == "autonomous"
 
     def test_settings_reads_auto_submit_from_env(self, monkeypatch):
@@ -89,7 +93,7 @@ class TestSettingsFromEnvironment:
 
         from src.config.settings import Settings
 
-        settings = Settings(_env_file=None)
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.auto_submit is True
 
     def test_settings_reads_max_applications_from_env(self, monkeypatch):
@@ -98,7 +102,7 @@ class TestSettingsFromEnvironment:
 
         from src.config.settings import Settings
 
-        settings = Settings(_env_file=None)
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.max_applications_per_day == 25
 
     def test_settings_reads_paths_from_env(self, monkeypatch):
@@ -110,7 +114,7 @@ class TestSettingsFromEnvironment:
 
         from src.config.settings import Settings
 
-        settings = Settings(_env_file=None)
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.tracker_db_path == Path("/custom/tracker.db")
         assert settings.output_dir == Path("/custom/output")
         assert settings.allowlist_log_path == Path("/custom/allowlist.log")
@@ -122,7 +126,7 @@ class TestSettingsFromEnvironment:
 
         from src.config.settings import Settings
 
-        settings = Settings(_env_file=None)
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.prohibited_domains == ["example.com", "*.evil.com"]
 
     def test_settings_parses_prohibited_domains_from_json_env(self, monkeypatch):
@@ -131,8 +135,26 @@ class TestSettingsFromEnvironment:
 
         from src.config.settings import Settings
 
-        settings = Settings(_env_file=None)
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.prohibited_domains == ["example.com", "*.evil.com"]
+
+    def test_settings_reads_runner_yolo_mode_from_env(self, monkeypatch):
+        """Settings should read RUNNER_YOLO_MODE from environment."""
+        monkeypatch.setenv("RUNNER_YOLO_MODE", "true")
+
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.runner_yolo_mode is True
+
+    def test_settings_reads_runner_assume_yes_from_env(self, monkeypatch):
+        """Settings should read RUNNER_ASSUME_YES from environment."""
+        monkeypatch.setenv("RUNNER_ASSUME_YES", "true")
+
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.runner_assume_yes is True
 
 
 class TestSettingsValidation:
@@ -145,7 +167,7 @@ class TestSettingsValidation:
         from src.config.settings import Settings
 
         with pytest.raises(ValueError):
-            Settings(_env_file=None)
+            Settings(_env_file=None)  # type: ignore[call-arg]
 
     def test_settings_validates_max_applications_positive(self, monkeypatch):
         """Settings should require max_applications_per_day to be positive."""
@@ -154,7 +176,7 @@ class TestSettingsValidation:
         from src.config.settings import Settings
 
         with pytest.raises(ValueError):
-            Settings(_env_file=None)
+            Settings(_env_file=None)  # type: ignore[call-arg]
 
 
 class TestSettingsOptionalFields:
@@ -174,7 +196,7 @@ class TestSettingsOptionalFields:
 
         from src.config.settings import Settings
 
-        settings = Settings(_env_file=None)
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.use_existing_chrome_profile is False
         assert settings.chrome_user_data_dir is None
         assert settings.chrome_profile_dir == "Default"
@@ -184,6 +206,6 @@ class TestSettingsOptionalFields:
         """LLM API key should be optional (can be loaded later)."""
         from src.config.settings import Settings
 
-        settings = Settings(_env_file=None)
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
         # Should not raise, even without API key
         assert settings.llm_api_key is None or isinstance(settings.llm_api_key, str)

@@ -23,15 +23,21 @@ from src.tailoring.service import TailoringResult
 def test_cli_single_mode_calls_pipeline_service(monkeypatch) -> None:
     from src.__main__ import main
 
-    mock = AsyncMock(
-        return_value=ApplicationRunResult(success=True, status=RunStatus.SKIPPED)
-    )
-    monkeypatch.setattr("src.runner.service.run_single_job", mock, raising=False)
+    captured = {}
 
-    exit_code = main(["single", "https://example.com/jobs/123"])
+    async def fake_run_single_job(_url: str, *, settings):
+        captured["settings"] = settings
+        return ApplicationRunResult(success=True, status=RunStatus.SKIPPED)
+
+    monkeypatch.setattr(
+        "src.runner.service.run_single_job", fake_run_single_job, raising=False
+    )
+
+    exit_code = main(["single", "https://example.com/jobs/123", "--yolo", "--yes"])
 
     assert exit_code == 0
-    mock.assert_awaited_once()
+    assert getattr(captured["settings"], "runner_yolo_mode", False) is True
+    assert getattr(captured["settings"], "runner_assume_yes", False) is True
 
 
 def test_cli_single_mode_missing_url_errors_cleanly() -> None:
@@ -46,8 +52,11 @@ def test_cli_autonomous_mode_calls_autonomous_service(monkeypatch, tmp_path) -> 
     leads_file = tmp_path / "leads.txt"
     leads_file.write_text("https://example.com/jobs/123\n", encoding="utf-8")
 
-    mock = AsyncMock(
-        return_value=BatchResult(
+    captured = {}
+
+    async def fake_run_autonomous(_leads_file, *, settings, **_kwargs):
+        captured["settings"] = settings
+        return BatchResult(
             processed=0,
             submitted=0,
             skipped=0,
@@ -55,13 +64,16 @@ def test_cli_autonomous_mode_calls_autonomous_service(monkeypatch, tmp_path) -> 
             duration_seconds=0.0,
             job_results=[],
         )
-    )
-    monkeypatch.setattr("src.autonomous.service.run_autonomous", mock, raising=False)
 
-    exit_code = main(["autonomous", str(leads_file), "--yes"])
+    monkeypatch.setattr(
+        "src.autonomous.service.run_autonomous", fake_run_autonomous, raising=False
+    )
+
+    exit_code = main(["autonomous", str(leads_file), "--yes", "--yolo"])
 
     assert exit_code == 0
-    mock.assert_awaited_once()
+    assert getattr(captured["settings"], "runner_yolo_mode", False) is True
+    assert getattr(captured["settings"], "runner_assume_yes", False) is True
 
 
 def test_cli_parser_supports_component_subcommands() -> None:
@@ -117,6 +129,16 @@ def test_cli_parser_supports_component_subcommands() -> None:
         ["tracker", "mark", "--fingerprint", "abc123", "--status", "submitted"]
     )
     assert tracker_args.tracker_cmd == "mark"
+
+    single_args = parser.parse_args(
+        ["single", "https://example.com/jobs/123", "--yolo", "--yes"]
+    )
+    assert single_args.yolo is True
+    assert single_args.yes is True
+
+    autonomous_args = parser.parse_args(["autonomous", "leads.txt", "--yes", "--yolo"])
+    assert autonomous_args.yolo is True
+    assert autonomous_args.yes is True
 
 
 def test_cli_parser_component_subcommands_accept_out_run_dir() -> None:
