@@ -10,7 +10,7 @@ class TestScoringConfig:
         """ScoringConfig should load with sensible defaults."""
         from src.scoring.config import ScoringConfig
 
-        config = ScoringConfig(_env_file=None)
+        config = ScoringConfig(_env_file=None)  # type: ignore[call-arg]
 
         assert str(config.profile_path) == "profiles/profile.yaml"
         assert config.fit_score_threshold == 0.75
@@ -29,6 +29,15 @@ class TestScoringConfig:
         assert config.visa_strict is True
         assert config.salary_strict is False
 
+        assert config.scoring_mode == "deterministic"
+        assert config.llm_provider == "openai"
+        assert config.llm_model == "gpt-4o"
+        assert config.llm_api_key is None
+        assert config.llm_base_url is None
+        assert config.llm_timeout == 60.0
+        assert config.llm_max_retries == 1
+        assert config.llm_reasoning_effort is None
+
     def test_scoring_config_reads_from_environment_variables(self, monkeypatch):
         """ScoringConfig should read from environment variables."""
         from src.scoring.config import ScoringConfig
@@ -38,14 +47,25 @@ class TestScoringConfig:
         monkeypatch.setenv("SCORING_REVIEW_MARGIN", "0.10")
         monkeypatch.setenv("SCORING_SKILL_FUZZY_MATCH", "false")
         monkeypatch.setenv("SCORING_LOCATION_STRICT", "true")
+        monkeypatch.setenv("SCORING_SCORING_MODE", "llm")
+        monkeypatch.setenv("SCORING_LLM_PROVIDER", "anthropic")
+        monkeypatch.setenv("SCORING_LLM_MODEL", "claude-sonnet-4-20250514")
+        monkeypatch.setenv("SCORING_LLM_TIMEOUT", "120")
+        monkeypatch.setenv("SCORING_LLM_MAX_RETRIES", "2")
 
-        config = ScoringConfig(_env_file=None)
+        config = ScoringConfig(_env_file=None)  # type: ignore[call-arg]
 
         assert str(config.profile_path) == "profiles/custom.yaml"
         assert config.fit_score_threshold == 0.80
         assert config.review_margin == 0.10
         assert config.skill_fuzzy_match is False
         assert config.location_strict is True
+
+        assert config.scoring_mode == "llm"
+        assert config.llm_provider == "anthropic"
+        assert config.llm_model == "claude-sonnet-4-20250514"
+        assert config.llm_timeout == 120.0
+        assert config.llm_max_retries == 2
 
     def test_scoring_config_validates_weights_sum_to_one(self):
         """ScoringConfig should validate weight sum is ~1.0."""
@@ -55,7 +75,7 @@ class TestScoringConfig:
 
         with pytest.raises(ValidationError):
             ScoringConfig(
-                _env_file=None,
+                _env_file=None,  # type: ignore[call-arg]
                 weight_must_have=0.50,
                 weight_preferred=0.20,
                 weight_experience=0.20,

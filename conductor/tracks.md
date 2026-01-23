@@ -8,12 +8,16 @@
 
 ---
 
-- [~] **Track: Component CLI Commands + Documentation Refresh**
-*Link: [./tracks/track_20260118_054529/](./tracks/track_20260118_054529/)*
+*No active tracks.*
 
 ---
 
 ## Completed Tracks
+
+---
+
+- [x] **Track: LLM-Based Fit Scoring + Evaluation Harness**
+*Link: [./tracks/llm_scoring_eval_20260122_232717/](./tracks/llm_scoring_eval_20260122_232717/)*
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "track_id": "llm_scoring_eval_20260122_232717",
+  "title": "LLM-Based Fit Scoring + Evaluation Harness",
+  "type": "feature",
+  "status": "completed",
+  "priority": "high",
+  "created_at": "2026-01-22T23:27:17Z",
+  "updated_at": "2026-01-23T01:43:47Z",
+  "description": "Add LLM-primary fit scoring (with deterministic fallback) and build a benchmarking harness to compare LLM vs deterministic scoring outputs."
+}

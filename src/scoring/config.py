@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -84,6 +84,45 @@ class ScoringConfig(BaseSettings):
     salary_strict: bool = Field(
         default=False,
         description="Strict salary filtering (hard constraint)",
+    )
+
+    # Scoring mode
+    scoring_mode: Literal["deterministic", "llm"] = Field(
+        default="deterministic",
+        description="Primary scoring mode: deterministic or llm",
+    )
+
+    # LLM scoring settings (used when scoring_mode == "llm")
+    llm_provider: str = Field(
+        default="openai",
+        description="LLM provider for scoring (openai, anthropic, etc.)",
+    )
+    llm_model: str = Field(
+        default="gpt-4o",
+        description="LLM model name for scoring",
+    )
+    llm_api_key: str | None = Field(
+        default=None,
+        description="API key for scoring LLM provider",
+    )
+    llm_base_url: str | None = Field(
+        default=None,
+        description="Base URL for OpenAI-compatible endpoints (scoring)",
+    )
+    llm_timeout: Annotated[float, Field(gt=0)] = Field(
+        default=60.0,
+        description="Timeout in seconds for scoring LLM calls",
+    )
+    llm_max_retries: Annotated[int, Field(ge=0)] = Field(
+        default=1,
+        description="Maximum retry attempts for scoring LLM calls",
+    )
+    llm_reasoning_effort: str | None = Field(
+        default=None,
+        description=(
+            "Reasoning effort for supported models (e.g. 'disable', 'none', 'minimal', "
+            "'low', 'medium', 'high', 'xhigh')."
+        ),
     )
 
     @model_validator(mode="after")

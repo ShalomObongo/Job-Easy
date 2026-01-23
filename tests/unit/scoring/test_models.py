@@ -268,7 +268,9 @@ class TestUserProfile:
         from src.scoring.models import UserProfile
 
         with pytest.raises(ValidationError):
-            UserProfile(email="jane@example.com", location="Remote", skills=["python"])
+            UserProfile(  # type: ignore[call-arg]
+                email="jane@example.com", location="Remote", skills=["python"]
+            )
 
 
 class TestFitScore:
@@ -331,6 +333,26 @@ class TestFitScore:
         )
 
         assert score.must_have_missing == ["docker"]
+
+    def test_fit_score_supports_risk_flags(self):
+        """FitScore should support risk flag annotations."""
+        from src.scoring.models import FitScore
+
+        score = FitScore(
+            total_score=0.5,
+            must_have_score=0.5,
+            must_have_matched=["python"],
+            must_have_missing=[],
+            preferred_score=1.0,
+            preferred_matched=[],
+            experience_score=1.0,
+            experience_reasoning="",
+            education_score=1.0,
+            education_reasoning="",
+            risk_flags=["salary_unknown"],
+        )
+
+        assert score.risk_flags == ["salary_unknown"]
 
 
 class TestConstraintResult:
@@ -488,3 +510,49 @@ class TestFitResult:
         after = datetime.now(UTC)
 
         assert before <= result.evaluated_at <= after
+
+    def test_fit_result_supports_score_source_and_baseline_fields(self):
+        """FitResult should support indicating LLM vs deterministic sources."""
+        from src.scoring.models import ConstraintResult, FitResult, FitScore
+
+        primary = FitScore(
+            total_score=0.8,
+            must_have_score=1.0,
+            must_have_matched=[],
+            must_have_missing=[],
+            preferred_score=1.0,
+            preferred_matched=[],
+            experience_score=1.0,
+            experience_reasoning="",
+            education_score=1.0,
+            education_reasoning="",
+        )
+        baseline = FitScore(
+            total_score=0.6,
+            must_have_score=0.5,
+            must_have_matched=[],
+            must_have_missing=[],
+            preferred_score=1.0,
+            preferred_matched=[],
+            experience_score=1.0,
+            experience_reasoning="",
+            education_score=1.0,
+            education_reasoning="",
+        )
+
+        result = FitResult(
+            job_url="https://example.com/jobs/123",
+            job_title="Engineer",
+            company="ExampleCo",
+            fit_score=primary,
+            constraints=ConstraintResult(passed=True),
+            recommendation="apply",
+            reasoning="LLM reasoning",
+            score_source="llm",
+            baseline_fit_score=baseline,
+            baseline_recommendation="review",
+        )
+
+        assert result.score_source == "llm"
+        assert result.baseline_fit_score is baseline
+        assert result.baseline_recommendation == "review"

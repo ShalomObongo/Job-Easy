@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -144,6 +144,7 @@ class FitScore:
     experience_reasoning: str = ""
     education_score: float = 1.0
     education_reasoning: str = ""
+    risk_flags: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         for name in (
@@ -188,6 +189,11 @@ class FitResult:
     constraints: ConstraintResult
     recommendation: Literal["apply", "skip", "review"]
     reasoning: str
+    score_source: Literal["deterministic", "llm", "fallback_deterministic"] = (
+        "deterministic"
+    )
+    baseline_fit_score: FitScore | None = None
+    baseline_recommendation: Literal["apply", "skip", "review"] | None = None
     evaluated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
@@ -197,5 +203,47 @@ class FitResult:
                 f"(got {self.recommendation})"
             )
 
+        if self.score_source not in {"deterministic", "llm", "fallback_deterministic"}:
+            raise ValueError(
+                "score_source must be one of: deterministic, llm, fallback_deterministic "
+                f"(got {self.score_source})"
+            )
 
-# Placeholder for remaining models (implemented in subsequent tasks).
+        if (
+            self.baseline_recommendation is not None
+            and self.baseline_recommendation
+            not in {
+                "apply",
+                "skip",
+                "review",
+            }
+        ):
+            raise ValueError(
+                "baseline_recommendation must be one of: apply, skip, review "
+                f"(got {self.baseline_recommendation})"
+            )
+
+
+class LLMFitEvaluation(BaseModel):
+    """Structured output schema for LLM-based fit scoring."""
+
+    total_score: Annotated[float, Field(ge=0.0, le=1.0)] = Field(
+        ..., description="Overall fit score (0.0-1.0)"
+    )
+    recommendation: Literal["apply", "review", "skip"] = Field(
+        ..., description="LLM recommendation"
+    )
+    reasoning: str = Field(..., description="Short reasoning for the decision")
+
+    must_have_matched: list[str] = Field(
+        default_factory=list, description="Matched must-have requirements"
+    )
+    must_have_missing: list[str] = Field(
+        default_factory=list, description="Missing must-have requirements"
+    )
+    preferred_matched: list[str] = Field(
+        default_factory=list, description="Matched preferred requirements"
+    )
+    risk_flags: list[str] = Field(
+        default_factory=list, description="Structured risk/uncertainty flags"
+    )
