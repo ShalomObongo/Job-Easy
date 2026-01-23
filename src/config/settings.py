@@ -116,6 +116,13 @@ class Settings(BaseSettings):
             "Enable runner YOLO mode (best-effort auto-answering for application questions)."
         ),
     )
+    runner_auto_submit: bool = Field(
+        default=False,
+        description=(
+            "Automatically confirm submit without human prompt. "
+            "Requires both runner_yolo_mode and runner_assume_yes to be enabled."
+        ),
+    )
     runner_llm_provider: str | None = Field(
         default=None,
         description="Runner LLM provider: 'openai', 'anthropic', 'browser_use', or 'auto'",

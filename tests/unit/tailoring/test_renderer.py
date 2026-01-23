@@ -28,6 +28,7 @@ def sample_tailored_resume():
         phone="555-123-4567",
         location="San Francisco, CA",
         linkedin_url="https://linkedin.com/in/johndoe",
+        github_url="https://github.com/johndoe",
         summary="Senior Python developer with 8 years of experience building scalable microservices.",
         sections=[
             TailoredSection(
@@ -154,7 +155,7 @@ class TestHTMLRendering:
         """Reset config after each test."""
         reset_tailoring_config()
 
-    def test_renders_resume_html(self, sample_tailored_resume):
+    def test_renders_resume_html(_, sample_tailored_resume):
         """Test that resume is rendered to HTML."""
         renderer = PDFRenderer()
         html = renderer._render_resume_html(sample_tailored_resume)
@@ -163,8 +164,9 @@ class TestHTMLRendering:
         assert "John Doe" in html
         assert "Senior Python developer" in html
         assert "FastAPI" in html
+        assert "github.com/johndoe" in html
 
-    def test_renders_cover_letter_html(self, sample_cover_letter):
+    def test_renders_cover_letter_html(_, sample_cover_letter):
         """Test that cover letter is rendered to HTML."""
         renderer = PDFRenderer()
         html = renderer._render_cover_letter_html(sample_cover_letter)

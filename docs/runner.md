@@ -641,7 +641,21 @@ Enable YOLO mode via either:
 
 When enabled:
 - Runner injects a job+user context JSON payload into the agent prompt.
-- The agent should avoid prompting for normal questions; only HITL gates remain (final submit confirmation, OTP prompts, CAPTCHA/2FA manual intervention).
+- The agent should avoid prompting for normal questions; only HITL gates remain (final submit confirmation unless auto-submit is enabled, OTP prompts, CAPTCHA/2FA manual intervention).
+
+### 5.2 Runner Auto-Submit Mode (Skip Final Confirmation)
+
+Auto-submit is an opt-in runner mode that automatically confirms the final submit
+step without prompting the user.
+
+Enable auto-submit via either:
+- `RUNNER_AUTO_SUBMIT=true` (requires `RUNNER_YOLO_MODE=true` and `RUNNER_ASSUME_YES=true`)
+- `python -m src single <url> --yolo --yes --auto-submit`
+- `python -m src autonomous <leads.txt> --yolo --yes --auto-submit`
+
+Notes:
+- Auto-submit still refuses to submit when required-field errors are present (it returns `blocked_missing_fields` so the agent can keep filling).
+- OTP/CAPTCHA/2FA flows still require manual intervention.
 
 ## API / Interface Documentation
 

@@ -91,6 +91,9 @@ cp .env.example .env        # Add your API keys
 cp profiles/profile.example.yaml profiles/profile.yaml  # Add your info
 ```
 
+Profile tips:
+- Add `github_url` to your `profiles/profile.yaml` (optional) so it can be included on the resume and used by YOLO mode to answer “GitHub/portfolio” questions.
+
 ### 3️⃣ Run
 
 ```bash
@@ -102,6 +105,9 @@ python -m src single https://jobs.lever.co/company/position-id --yolo
 
 # Single job (YOLO + auto-approve fit/doc prompts)
 python -m src single https://jobs.lever.co/company/position-id --yolo --yes
+
+# Single job (YOLO + auto-submit final submit)
+python -m src single https://jobs.lever.co/company/position-id --yolo --yes --auto-submit
 
 # Batch mode - process multiple jobs
 python -m src autonomous leads.txt --dry-run
@@ -152,6 +158,16 @@ python -m src single https://jobs.lever.co/company/position-id --yolo --yes
 ```
 
 Note: `--yes` only applies to non-submit prompts (fit skip/review and document approval). Final submit is still gated and requires typing `YES`.
+
+### Auto-Submit (Optional)
+
+If you explicitly opt in, you can skip the final “Type YES” submit confirmation:
+
+```bash
+python -m src single <url> --yolo --yes --auto-submit
+```
+
+Auto-submit is only allowed when both `--yolo` and `--yes` are enabled.
 
 ### Autonomous Mode
 
@@ -282,6 +298,16 @@ pytest --cov=src            # With coverage
 pytest tests/unit/scoring/  # Specific module
 ```
 
+## 🧩 PDF Rendering Dependencies (WeasyPrint)
+
+This project uses WeasyPrint for PDF generation. It requires system libraries
+(Pango/Cairo/GObject). If you hit import/linker errors, install the OS deps.
+
+macOS (Homebrew):
+```bash
+brew install pango cairo gdk-pixbuf libffi
+```
+
 ---
 
 ## ⚠️ Safety First
@@ -289,6 +315,7 @@ pytest tests/unit/scoring/  # Specific module
 > **Job-Easy is designed to assist, not replace your judgment.**
 
 - 🔒 **No auto-submit by default** — You must type YES
+- ✅ **Auto-submit is opt-in** — Requires `--yolo --yes --auto-submit` (or `RUNNER_AUTO_SUBMIT=true` with the same prerequisites)
 - 🚫 **No CAPTCHA bypass** — System pauses and asks for help
 - 🛑 **Duplicate protection** — Won't reapply accidentally
 - 👀 **Full transparency** — Review everything before it's sent

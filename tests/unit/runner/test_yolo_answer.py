@@ -4,7 +4,7 @@ from datetime import date
 
 from src.extractor.models import JobDescription
 from src.runner.yolo import build_yolo_context, choose_safe_option, resolve_yolo_answer
-from src.scoring.models import UserProfile, WorkExperience
+from src.scoring.models import Education, UserProfile, WorkExperience
 
 
 def _context() -> dict:
@@ -21,8 +21,10 @@ def _context() -> dict:
         phone="555-555-5555",
         location="NYC",
         linkedin_url="https://linkedin.com/in/jane",
+        github_url="https://github.com/jane",
         skills=["python", "linux"],
         years_of_experience=5,
+        preferred_salary=65000,
         work_history=[
             WorkExperience(
                 company="Widgets Inc",
@@ -31,6 +33,14 @@ def _context() -> dict:
                 end_date=None,
                 description="Built internal tools.",
                 skills_used=["python"],
+            )
+        ],
+        education=[
+            Education(
+                institution="Example University",
+                degree="Bachelor's",
+                field="Computer Science",
+                graduation_year=2020,
             )
         ],
     )
@@ -60,6 +70,19 @@ def test_resolve_yolo_answer_returns_contact_email() -> None:
     assert answer == "jane@example.com"
 
 
+def test_resolve_yolo_answer_returns_contact_github_url() -> None:
+    ctx = _context()
+    answer, category = resolve_yolo_answer(
+        "GitHub profile URL",
+        yolo_context=ctx,
+        field_type="text",
+        options=None,
+    )
+
+    assert category == "contact"
+    assert answer == "https://github.com/jane"
+
+
 def test_resolve_yolo_answer_for_eeo_selects_prefer_not_to_say() -> None:
     ctx = _context()
     answer, category = resolve_yolo_answer(
@@ -85,3 +108,34 @@ def test_resolve_yolo_answer_for_motivation_includes_company_and_role() -> None:
     assert category == "motivation"
     assert "ACME" in answer
     assert "Engineer" in answer
+
+
+def test_resolve_yolo_answer_for_compensation_selects_salary_range_option() -> None:
+    ctx = _context()
+    answer, category = resolve_yolo_answer(
+        "What is your desired salary range?",
+        yolo_context=ctx,
+        field_type="select",
+        options=["$50,000 - $60,000", "$60,000 - $70,000", "$70,000 - $80,000"],
+    )
+
+    assert category == "compensation"
+    assert answer == "$60,000 - $70,000"
+
+
+def test_resolve_yolo_answer_for_education_selects_best_matching_option() -> None:
+    ctx = _context()
+    answer, category = resolve_yolo_answer(
+        "What is your highest level of education?",
+        yolo_context=ctx,
+        field_type="select",
+        options=[
+            "High school",
+            "Bachelor's degree",
+            "Master's degree",
+            "PhD",
+        ],
+    )
+
+    assert category == "education"
+    assert answer == "Bachelor's degree"

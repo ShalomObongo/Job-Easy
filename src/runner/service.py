@@ -277,6 +277,16 @@ class SingleJobApplicationService:
         yolo_context = (
             build_yolo_context(job=job_obj, profile=profile_obj) if yolo_mode else None
         )
+        auto_submit_requested = bool(
+            getattr(self.settings, "runner_auto_submit", False)
+        )
+        auto_submit = bool(auto_submit_requested and yolo_mode and assume_yes)
+        if auto_submit_requested and not auto_submit:
+            logger.warning(
+                "RUNNER_AUTO_SUBMIT is enabled but requires both YOLO mode and "
+                "assume-yes to be enabled; disabling auto-submit for this run."
+            )
+            run_notes.append("auto_submit_disabled_missing_prereqs")
 
         qa_scope_hints = _build_qa_scope_hints(
             fingerprint=fingerprint_str,
@@ -293,6 +303,7 @@ class SingleJobApplicationService:
             qa_scope_hints=qa_scope_hints,
             yolo_mode=yolo_mode,
             yolo_context=yolo_context,
+            auto_submit=auto_submit,
         )
 
         if result.status == RunStatus.SUBMITTED:
@@ -325,6 +336,7 @@ class SingleJobApplicationService:
         qa_scope_hints: list[ScopeHint] | None = None,
         yolo_mode: bool = False,
         yolo_context: dict[str, Any] | None = None,
+        auto_submit: bool = False,
     ) -> ApplicationRunResult:
         """Run the Browser Use application agent and persist artifacts."""
         prohibited_domains = list(getattr(self.settings, "prohibited_domains", []))
@@ -356,6 +368,7 @@ class SingleJobApplicationService:
             ("phone", "phone"),
             ("location", "location"),
             ("linkedin_url", "linkedin_url"),
+            ("github_url", "github_url"),
         ):
             value = getattr(profile, attr, None)
             if value:
@@ -399,6 +412,7 @@ class SingleJobApplicationService:
                 ),
                 yolo_mode=yolo_mode,
                 yolo_context=yolo_context,
+                auto_submit=auto_submit,
                 max_failures=getattr(self.settings, "runner_max_failures", 3),
                 max_actions_per_step=getattr(
                     self.settings, "runner_max_actions_per_step", 4

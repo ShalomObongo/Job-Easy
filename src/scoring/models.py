@@ -81,6 +81,7 @@ class UserProfile(BaseModel):
     phone: str | None = Field(default=None, description="Contact phone")
     location: str = Field(..., description="Current location")
     linkedin_url: str | None = Field(default=None, description="LinkedIn profile URL")
+    github_url: str | None = Field(default=None, description="GitHub profile URL")
 
     # Skills & experience
     skills: list[str] = Field(..., description="List of skills/technologies")

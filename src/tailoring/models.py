@@ -125,6 +125,7 @@ class TailoredResume(BaseModel):
     phone: str | None = Field(default=None, description="Contact phone")
     location: str = Field(..., description="Location")
     linkedin_url: str | None = Field(default=None, description="LinkedIn profile URL")
+    github_url: str | None = Field(default=None, description="GitHub profile URL")
 
     # Content
     summary: str = Field(..., description="Professional summary tailored for this job")

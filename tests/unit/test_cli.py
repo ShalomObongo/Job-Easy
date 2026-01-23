@@ -40,6 +40,49 @@ def test_cli_single_mode_calls_pipeline_service(monkeypatch) -> None:
     assert getattr(captured["settings"], "runner_assume_yes", False) is True
 
 
+def test_cli_single_mode_auto_submit_requires_yolo_and_yes() -> None:
+    from src.__main__ import main
+
+    assert main(["single", "https://example.com/jobs/123", "--auto-submit"]) == 1
+
+
+def test_cli_single_mode_auto_submit_sets_runner_auto_submit(monkeypatch) -> None:
+    from src.__main__ import main
+
+    captured = {}
+
+    async def fake_run_single_job(_url: str, *, settings):
+        captured["settings"] = settings
+        return ApplicationRunResult(success=True, status=RunStatus.SKIPPED)
+
+    monkeypatch.setattr(
+        "src.runner.service.run_single_job", fake_run_single_job, raising=False
+    )
+
+    exit_code = main(
+        [
+            "single",
+            "https://example.com/jobs/123",
+            "--yolo",
+            "--yes",
+            "--auto-submit",
+        ]
+    )
+
+    assert exit_code == 0
+    assert getattr(captured["settings"], "runner_auto_submit", False) is True
+
+
+def test_cli_single_mode_env_runner_auto_submit_requires_prereqs(monkeypatch) -> None:
+    from src.__main__ import main
+
+    monkeypatch.setenv("RUNNER_AUTO_SUBMIT", "true")
+    monkeypatch.setenv("RUNNER_YOLO_MODE", "false")
+    monkeypatch.setenv("RUNNER_ASSUME_YES", "false")
+
+    assert main(["single", "https://example.com/jobs/123"]) == 1
+
+
 def test_cli_single_mode_missing_url_errors_cleanly() -> None:
     from src.__main__ import main
 

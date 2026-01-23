@@ -30,6 +30,7 @@ class TestSettingsDefaults:
             "RUNNER_USE_VISION",
             "RUNNER_ASSUME_YES",
             "RUNNER_YOLO_MODE",
+            "RUNNER_AUTO_SUBMIT",
             "RUNNER_LLM_PROVIDER",
             "RUNNER_LLM_API_KEY",
             "RUNNER_LLM_BASE_URL",
@@ -63,6 +64,7 @@ class TestSettingsDefaults:
             assert settings.runner_use_vision == "auto"
             assert settings.runner_assume_yes is False
             assert settings.runner_yolo_mode is False
+            assert settings.runner_auto_submit is False
             assert settings.runner_llm_provider is None
             assert settings.runner_llm_api_key is None
             assert settings.runner_llm_base_url is None
@@ -155,6 +157,15 @@ class TestSettingsFromEnvironment:
 
         settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.runner_assume_yes is True
+
+    def test_settings_reads_runner_auto_submit_from_env(self, monkeypatch):
+        """Settings should read RUNNER_AUTO_SUBMIT from environment."""
+        monkeypatch.setenv("RUNNER_AUTO_SUBMIT", "true")
+
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.runner_auto_submit is True
 
 
 class TestSettingsValidation:

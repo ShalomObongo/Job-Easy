@@ -7,8 +7,11 @@ This module provides:
 """
 
 import asyncio
+import logging
 
 from browser_use import BrowserSession, Tools
+
+logger = logging.getLogger(__name__)
 
 _REQUIRED_ERROR_PHRASES = (
     "this field is required.",
@@ -73,8 +76,13 @@ def prompt_otp_code(prompt: str) -> str:
     return normalize_otp_code(input(f"{prompt} > "))
 
 
-def create_hitl_tools() -> Tools:
-    """Create a Browser Use Tools registry with HITL actions."""
+def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
+    """Create a Browser Use Tools registry with HITL actions.
+
+    Args:
+        auto_submit: If True, confirm_submit will automatically submit without
+            prompting the human. Use with caution.
+    """
     tools = Tools()
 
     @tools.action(description="Ask the human a yes/no question. Returns 'yes' or 'no'.")
@@ -85,12 +93,17 @@ def create_hitl_tools() -> Tools:
     def ask_free_text(question: str) -> str:
         return prompt_free_text(question)
 
-    @tools.action(
-        description=(
-            "Before final submit, require the human to type YES/yes to confirm; "
-            "when confirmed, click the final submit button."
-        )
+    confirm_submit_description = (
+        "Before final submit, require the human to type YES/yes to confirm; "
+        "when confirmed, click the final submit button."
     )
+    if auto_submit:
+        confirm_submit_description = (
+            "Auto-submit mode: Click the final submit button automatically "
+            "(no human confirmation required)."
+        )
+
+    @tools.action(description=confirm_submit_description)
     async def confirm_submit(
         prompt: str,
         browser_session: BrowserSession,
@@ -102,14 +115,21 @@ def create_hitl_tools() -> Tools:
             - "submitted": user confirmed and we clicked a submit button
             - "confirmed": user confirmed but we could not click automatically
             - "cancelled": user did not confirm
+            - "blocked_missing_fields": form has required field errors
         """
-        # If the form is not actually ready, do not ask for confirmation yet.
+        # If the form is not actually ready, do not submit yet.
         if await _has_required_field_errors(browser_session):
             return "blocked_missing_fields"
 
-        confirmed = prompt_confirm_submit(prompt)
-        if not confirmed:
-            return "cancelled"
+        if auto_submit:
+            logger.warning(
+                "AUTO-SUBMIT: Submitting application without human confirmation"
+            )
+            confirmed = True
+        else:
+            confirmed = prompt_confirm_submit(prompt)
+            if not confirmed:
+                return "cancelled"
 
         clicked = await _click_submit_button(
             browser_session=browser_session, submit_button_index=submit_button_index

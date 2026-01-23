@@ -18,6 +18,9 @@
                 {% if linkedin_url %}
                 <li><a href="{{ linkedin_url }}">{{ linkedin_url | replace('https://', '') | replace('http://', '') }}</a></li>
                 {% endif %}
+                {% if github_url %}
+                <li><a href="{{ github_url }}">{{ github_url | replace('https://', '') | replace('http://', '') }}</a></li>
+                {% endif %}
             </ul>
         </header>
 

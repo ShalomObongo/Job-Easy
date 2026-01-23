@@ -280,6 +280,7 @@ class TailoredResume(BaseModel):
     phone: str | None
     location: str
     linkedin_url: str | None
+    github_url: str | None
 
     # Content
     summary: str
@@ -469,6 +470,7 @@ The module uses Jinja2 for HTML generation with WeasyPrint for PDF rendering.
 {{ phone }}
 {{ location }}
 {{ linkedin_url }}
+{{ github_url }}
 {{ summary }}
 {{ sections }}  # List of prepared sections with derived fields
 {{ keywords_used }}

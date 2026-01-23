@@ -130,6 +130,7 @@ def create_application_agent(
     sensitive_data: dict[str, str | dict[str, str]] | None = None,
     yolo_mode: bool = False,
     yolo_context: dict[str, Any] | None = None,
+    auto_submit: bool = False,
     max_failures: int = 3,
     max_actions_per_step: int = 4,
     step_timeout: int = 120,
@@ -142,11 +143,12 @@ def create_application_agent(
         job_url,
         yolo_mode=yolo_mode,
         yolo_context=yolo_context,
+        auto_submit=auto_submit,
         available_file_paths=available_file_paths,
     )
 
     if tools is None:
-        tools = create_hitl_tools()
+        tools = create_hitl_tools(auto_submit=auto_submit)
 
     if qa_bank_path is not None:
         qa_bank = QABank(qa_bank_path)
@@ -287,6 +289,7 @@ def get_application_prompt(
     *,
     yolo_mode: bool = False,
     yolo_context: dict[str, Any] | None = None,
+    auto_submit: bool = False,
     available_file_paths: list[str] | None = None,
 ) -> str:
     """Build the task prompt for a generic job application flow."""
@@ -331,11 +334,41 @@ Files available for upload (only use these exact paths):
         else "0) YOLO mode: use resolve_answer(...) to retrieve or generate best-effort answers from the provided job+user context. Do not prompt the human for normal questions."
     )
 
+    # Build goal section based on auto_submit mode
+    if auto_submit:
+        goal_section = """Goal:
+- Fill out the application form completely and submit it automatically.
+- AUTO-SUBMIT mode is enabled: the confirm_submit tool will automatically submit without prompting."""
+    else:
+        goal_section = """Goal:
+- Reach the final submit step, then STOP and ask for explicit confirmation.
+- Only submit after the user explicitly confirms by typing YES (use the confirm_submit tool)."""
+
+    # Build submit gate section based on auto_submit mode
+    if auto_submit:
+        submit_gate_section = """Submit gate (auto-submit enabled):
+- When you are on the final review step and the next click would submit the application:
+  - Call confirm_submit when all required fields are complete and you are truly ready to submit.
+  - Pass submit_button_index as the element index of the final submit button you intend to click.
+  - AUTO-SUBMIT: The tool will automatically click the submit button without prompting the human.
+  - If the tool returns "submitted", proceed to verify submission (confirmation text/screenshot) and finish with status submitted.
+  - If the tool returns "blocked_missing_fields", do NOT submit; fill the missing required fields and only then call confirm_submit again.
+  - If the tool returns "confirmed", the click may have failed; click the final submit button yourself."""
+    else:
+        submit_gate_section = """Submit gate (required):
+- When you are on the final review step and the next click would submit the application:
+  - Call confirm_submit only when all required fields are complete and you are truly ready to submit.
+  - Call confirm_submit with prompt: "Type YES to submit this application"
+  - Also pass submit_button_index as the element index of the final submit button you intend to click.
+  - The confirm_submit tool will ask the human and (if confirmed) click the submit button for you.
+  - If the tool returns "submitted", proceed to verify submission (confirmation text/screenshot) and finish with status submitted.
+  - If the tool returns "blocked_missing_fields", do NOT submit; fill the missing required fields and only then call confirm_submit again.
+  - If the tool returns "confirmed", the human confirmed but the click failed; you must click the final submit button yourself.
+  - If the tool returns anything else ("cancelled"), do not submit and finish with status stopped_before_submit."""
+
     return f"""You are applying to a job starting from this URL: {job_url}
 
-Goal:
-- Reach the final submit step, then STOP and ask for explicit confirmation.
-- Only submit after the user explicitly confirms by typing YES (use the confirm_submit tool).
+{goal_section}
 
 Applicant info (sensitive placeholders; never invent values):
 - first_name
@@ -345,6 +378,7 @@ Applicant info (sensitive placeholders; never invent values):
 - phone
 - location
 - linkedin_url
+- github_url
 
 {yolo_section}
 
@@ -358,6 +392,7 @@ Form filling rules:
 2) If browser_state shows required-field errors (e.g. "This field is required.", "Resume/CV is required.", or invalid=true on required inputs), you are NOT at the final submit step yet. Fix missing fields/uploads first.
 3) Only upload the cover letter if there is a dedicated "Cover Letter" upload field. Never overwrite the Resume/CV field with the cover letter.
 4) If the cover letter field is text-only (no upload), generate a brief cover letter using the job information and company name from the page.
+5) For radio button and checkbox questions (e.g., salary range, education level), you MUST select an option before proceeding. Never skip required radio/checkbox fields.
 
 Flow handling:
 1) If this is a job posting page, find and click an Apply / Apply Now button.
@@ -368,17 +403,9 @@ Flow handling:
    - Non-YOLO mode: use resolve_answer(question, context) to load from the Q&A bank; if missing, it will ask the human and persist for next time.
    - YOLO mode: call resolve_answer(...) to retrieve or generate a best-effort answer (it may return "" when not possible).
 6) If CAPTCHA/2FA appears, stop and ask the user for manual help; do not bypass.
+7) IMPORTANT: Complete ALL required fields before calling confirm_submit. Do not give up or return "blocked" status until you have tried to fill every required field including radio buttons, checkboxes, and dropdowns.
 
-Submit gate (required):
-- When you are on the final review step and the next click would submit the application:
-  - Call confirm_submit only when all required fields are complete and you are truly ready to submit.
-  - Call confirm_submit with prompt: "Type YES to submit this application"
-  - Also pass submit_button_index as the element index of the final submit button you intend to click.
-  - The confirm_submit tool will ask the human and (if confirmed) click the submit button for you.
-  - If the tool returns "submitted", proceed to verify submission (confirmation text/screenshot) and finish with status submitted.
-  - If the tool returns "blocked_missing_fields", do NOT submit; fill the missing required fields and only then call confirm_submit again.
-  - If the tool returns "confirmed", the human confirmed but the click failed; you must click the final submit button yourself.
-  - If the tool returns anything else ("cancelled"), do not submit and finish with status stopped_before_submit.
+{submit_gate_section}
 
 Return a structured result matching ApplicationRunResult with:
 - success (bool)

@@ -114,6 +114,14 @@ For more information, see the documentation in docs/
             "(final submit still requires typing YES)"
         ),
     )
+    single_parser.add_argument(
+        "--auto-submit",
+        action="store_true",
+        help=(
+            "Automatically confirm final submit without human prompt. "
+            "Requires --yolo and --yes to be enabled."
+        ),
+    )
 
     # Autonomous mode
     autonomous_parser = subparsers.add_parser(
@@ -150,6 +158,14 @@ For more information, see the documentation in docs/
         "--yolo",
         action="store_true",
         help="Enable runner YOLO mode (best-effort auto-answering)",
+    )
+    autonomous_parser.add_argument(
+        "--auto-submit",
+        action="store_true",
+        help=(
+            "Automatically confirm final submit without human prompt. "
+            "Requires --yolo and --yes to be enabled."
+        ),
     )
 
     # Component mode: extract
@@ -457,6 +473,20 @@ def main(args: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
+    runner_modes = {"single", "autonomous", "apply"}
+    auto_submit_requested = bool(getattr(parsed, "auto_submit", False)) or bool(
+        getattr(settings, "runner_auto_submit", False)
+    )
+    if parsed.mode in runner_modes and auto_submit_requested:
+        if not settings.runner_yolo_mode or not settings.runner_assume_yes:
+            print(
+                "Error: auto-submit requires both YOLO mode and assume-yes to be enabled "
+                "(--yolo/--yes or RUNNER_YOLO_MODE/RUNNER_ASSUME_YES).",
+                file=sys.stderr,
+            )
+            return 1
+        settings.runner_auto_submit = True
+
     logger.info(f"Job-Easy v{__version__} starting in {parsed.mode} mode")
 
     # Handle modes
@@ -736,6 +766,7 @@ def main(args: list[str] | None = None) -> int:
                 ("phone", "phone"),
                 ("location", "location"),
                 ("linkedin_url", "linkedin_url"),
+                ("github_url", "github_url"),
             ):
                 value = getattr(profile, attr, None)
                 if value:
@@ -749,6 +780,9 @@ def main(args: list[str] | None = None) -> int:
             browser = create_browser(settings, prohibited_domains=prohibited)
 
             yolo_mode = bool(getattr(settings, "runner_yolo_mode", False))
+            assume_yes = bool(getattr(settings, "runner_assume_yes", False))
+            auto_submit_requested = bool(getattr(settings, "runner_auto_submit", False))
+            auto_submit = bool(auto_submit_requested and yolo_mode and assume_yes)
             yolo_context = None
 
             domain = urlparse(parsed.url).netloc.strip().lower()
@@ -798,7 +832,7 @@ def main(args: list[str] | None = None) -> int:
                 job_url=parsed.url,
                 browser=browser,
                 llm=llm,
-                tools=create_hitl_tools(),
+                tools=create_hitl_tools(auto_submit=auto_submit),
                 available_file_paths=available_file_paths,
                 save_conversation_path=conversation_path,
                 qa_bank_path=getattr(
@@ -808,6 +842,7 @@ def main(args: list[str] | None = None) -> int:
                 sensitive_data=sensitive_data or None,
                 yolo_mode=yolo_mode,
                 yolo_context=yolo_context,
+                auto_submit=auto_submit,
                 max_failures=getattr(settings, "runner_max_failures", 3),
                 max_actions_per_step=getattr(
                     settings, "runner_max_actions_per_step", 4

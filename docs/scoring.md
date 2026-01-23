@@ -69,6 +69,7 @@ class UserProfile(BaseModel):
     phone: str | None
     location: str
     linkedin_url: str | None
+    github_url: str | None
 
     # Skills & Experience
     skills: list[str]
@@ -100,6 +101,7 @@ class UserProfile(BaseModel):
 | `phone` | str | No | Contact phone |
 | `location` | str | Yes | Current location |
 | `linkedin_url` | str | No | LinkedIn profile URL |
+| `github_url` | str | No | GitHub profile URL |
 | `skills` | list[str] | Yes | Skills/technologies |
 | `years_of_experience` | int | Yes | Total years of experience (≥0) |
 | `current_title` | str | No | Current job title |
@@ -1879,6 +1881,7 @@ email: "jane.doe@example.com"
 phone: "+1-555-555-5555"
 location: "New York, NY"
 linkedin_url: "https://www.linkedin.com/in/janedoe"
+github_url: "https://github.com/janedoe"
 
 skills:
   - "Python"

@@ -13,13 +13,14 @@ from typing import Any, Literal
 from src.extractor.models import JobDescription
 from src.scoring.models import UserProfile
 
-YOLO_CONTEXT_VERSION = 1
+YOLO_CONTEXT_VERSION = 2
 
 type QuestionCategory = Literal[
     "contact",
     "eligibility",
     "experience",
     "compensation",
+    "education",
     "motivation",
     "eeo",
     "other",
@@ -114,6 +115,8 @@ def classify_question(question: str) -> QuestionCategory:
         "e-mail",
         "phone",
         "linkedin",
+        "github",
+        "git hub",
         "website",
         "portfolio",
         "address",
@@ -140,6 +143,24 @@ def classify_question(question: str) -> QuestionCategory:
     )
     if any(term in normalized for term in experience_terms):
         return "experience"
+
+    education_terms = (
+        "education",
+        "degree",
+        "highest level of education",
+        "educational background",
+        "academic",
+        "university",
+        "college",
+        "diploma",
+        "bachelor",
+        "master",
+        "phd",
+        "doctorate",
+        "qualification",
+    )
+    if any(term in normalized for term in education_terms):
+        return "education"
 
     return "other"
 
@@ -215,6 +236,7 @@ def build_yolo_context(
             "phone": profile_data.get("phone"),
             "location": profile_data.get("location"),
             "linkedin_url": profile_data.get("linkedin_url"),
+            "github_url": profile_data.get("github_url"),
             "skills": profile_data.get("skills", []),
             "years_of_experience": profile_data.get("years_of_experience"),
             "current_title": profile_data.get("current_title"),
@@ -293,6 +315,138 @@ def _split_name(full_name: str) -> tuple[str | None, str | None]:
     return parts[0], " ".join(parts[1:])
 
 
+def _parse_salary_from_option(option: str) -> tuple[int | None, int | None]:
+    """Extract min/max salary values from an option string like 'Kshs 26000 - Kshs 35000'."""
+    normalized = option.lower().replace(",", "").replace(" ", "")
+    # Find all numbers in the string
+    numbers = re.findall(r"\d+", normalized)
+    if not numbers:
+        return None, None
+    if len(numbers) == 1:
+        val = int(numbers[0])
+        return val, val
+    # Assume first is min, last is max
+    return int(numbers[0]), int(numbers[-1])
+
+
+def _select_salary_range_option(options: list[str], target_salary: int) -> str | None:
+    """Select the best matching salary range option for a target salary."""
+    if not options:
+        return None
+
+    best_option = None
+    best_distance = float("inf")
+
+    for option in options:
+        min_val, max_val = _parse_salary_from_option(option)
+        if min_val is None:
+            continue
+
+        # If target is within range, this is a perfect match
+        if min_val <= target_salary <= (max_val or min_val):
+            return option
+
+        # Calculate distance to range
+        if target_salary < min_val:
+            distance = min_val - target_salary
+        else:
+            distance = target_salary - (max_val or min_val)
+
+        if distance < best_distance:
+            best_distance = distance
+            best_option = option
+
+    return best_option
+
+
+# Education level ordering (higher index = higher level)
+_EDUCATION_LEVELS = [
+    ("high school", "secondary", "kcse", "gcse", "a-level"),
+    ("certificate", "certification"),
+    ("diploma", "associate", "higher diploma"),
+    ("bachelor", "bsc", "ba", "beng", "undergraduate"),
+    ("master", "msc", "ma", "mba", "meng", "postgraduate"),
+    ("phd", "doctorate", "doctoral", "dr"),
+]
+
+
+def _get_education_level_rank(text: str) -> int:
+    """Get the rank of an education level (higher = more advanced)."""
+    normalized = _normalize_text(text)
+    for rank, terms in enumerate(_EDUCATION_LEVELS):
+        if any(term in normalized for term in terms):
+            return rank
+    return -1
+
+
+def _get_highest_degree(education_list: list) -> str | None:
+    """Extract the highest degree from a user's education list."""
+    if not education_list:
+        return None
+
+    highest_rank = -1
+    highest_degree = None
+
+    for edu in education_list:
+        if not isinstance(edu, dict):
+            continue
+        degree = edu.get("degree")
+        if not degree:
+            continue
+        degree_str = str(degree).strip()
+        rank = _get_education_level_rank(degree_str)
+        if rank > highest_rank:
+            highest_rank = rank
+            highest_degree = degree_str
+
+    return highest_degree
+
+
+def _select_education_option(options: list[str], user_degree: str | None) -> str | None:
+    """Select the best matching education option for the user's degree."""
+    if not options:
+        return None
+
+    if not user_degree:
+        # Default to highest available option if no user degree
+        # or "Other" if available
+        safe = choose_safe_option(options)
+        if safe:
+            return safe
+        return options[-1] if options else None
+
+    user_rank = _get_education_level_rank(user_degree)
+
+    # Try to find an exact or close match
+    best_option = None
+    best_distance = float("inf")
+
+    for option in options:
+        option_rank = _get_education_level_rank(option)
+        if option_rank < 0:
+            continue
+
+        distance = abs(option_rank - user_rank)
+        if distance < best_distance:
+            best_distance = distance
+            best_option = option
+
+        # If user's degree matches this option's level, use it
+        if option_rank == user_rank:
+            return option
+
+    # If user has higher degree than any option, pick the highest option
+    if best_option is None and options:
+        ranked_options = [(opt, _get_education_level_rank(opt)) for opt in options]
+        ranked_options.sort(key=lambda x: x[1], reverse=True)
+        for opt, rank in ranked_options:
+            if rank >= 0:
+                return opt
+        return options[-1]
+
+    return best_option
+
+
 def resolve_yolo_answer(
     question: str,
     *,
@@ -331,6 +485,8 @@ def resolve_yolo_answer(
             return (str(user.get("phone") or "").strip()), category
         if "linkedin" in normalized_q:
             return (str(user.get("linkedin_url") or "").strip()), category
+        if "github" in normalized_q or "git hub" in normalized_q:
+            return (str(user.get("github_url") or "").strip()), category
         if (
             "location" in normalized_q
             or "city" in normalized_q
@@ -368,6 +524,28 @@ def resolve_yolo_answer(
         return "", category
 
     if category == "compensation":
+        # If options are provided (radio buttons/dropdown), try to select best match
+        if options:
+            # Get user's salary preference
+            value = preferences.get("preferred_salary")
+            if not isinstance(value, (int, float)):
+                value = preferences.get("min_salary")
+            if not isinstance(value, (int, float)):
+                value = job.get("salary_min")
+
+            if isinstance(value, (int, float)):
+                # Try to match salary to a range option
+                best_match = _select_salary_range_option(options, int(value))
+                if best_match:
+                    return best_match, category
+
+            # If no match found, pick the middle option or highest available
+            if len(options) > 0:
+                # Prefer middle or higher range
+                mid_idx = len(options) // 2
+                return options[mid_idx], category
+
+        # Text field: return numeric value
         value = preferences.get("preferred_salary")
         if not isinstance(value, (int, float)):
             value = preferences.get("min_salary")
@@ -375,6 +553,24 @@ def resolve_yolo_answer(
             value = job.get("salary_min")
         if isinstance(value, (int, float)):
             return str(int(value)), category
+        return "", category
+
+    if category == "education":
+        # Get user's education from profile
+        education_list = (
+            user.get("education") if isinstance(user.get("education"), list) else []
+        )
+        highest_degree = _get_highest_degree(education_list)
+
+        if options:
+            # Try to match education level to an option
+            best_match = _select_education_option(options, highest_degree)
+            if best_match:
+                return best_match, category
+
+        # Text field: return the degree name
+        if highest_degree:
+            return highest_degree, category
         return "", category
 
     if category == "eeo":

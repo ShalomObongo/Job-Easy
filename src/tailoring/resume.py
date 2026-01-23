@@ -574,6 +574,7 @@ Detected violations:
             phone=profile.phone,
             location=profile.location,
             linkedin_url=profile.linkedin_url,
+            github_url=profile.github_url,
             summary=response.summary,
             sections=[
                 TailoredSection(

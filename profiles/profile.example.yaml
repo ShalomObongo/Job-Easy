@@ -15,6 +15,7 @@ email: "jane.doe@example.com"
 phone: "+1-555-555-5555" # Optional
 location: "New York, NY"
 linkedin_url: "https://www.linkedin.com/in/janedoe" # Optional
+github_url: "https://github.com/janedoe" # Optional
 
 # =============================================================================
 # SKILLS & EXPERIENCE

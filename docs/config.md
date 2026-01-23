@@ -229,15 +229,18 @@ Configuration for the browser automation runner (application form filling).
 | `runner_max_actions_per_step` | `int` | `4` | Max actions per agent step (form fill batching) |
 | `runner_step_timeout` | `int` | `120` | Timeout per runner step in seconds |
 | `runner_use_vision` | `str` | `"auto"` | Runner vision mode: 'auto', 'true', or 'false' |
+| `runner_assume_yes` | `bool` | `False` | Assume "yes" for non-submit prompts (fit/doc approval); final submit still gated unless auto-submit enabled |
 | `runner_yolo_mode` | `bool` | `False` | Enable YOLO mode (best-effort auto-answering) |
+| `runner_auto_submit` | `bool` | `False` | Auto-confirm final submit without human prompt (requires YOLO + assume-yes) |
 
-**Environment Variables**: `RUNNER_MAX_FAILURES`, `RUNNER_MAX_ACTIONS_PER_STEP`, `RUNNER_STEP_TIMEOUT`, `RUNNER_USE_VISION`, `RUNNER_ASSUME_YES`, `RUNNER_YOLO_MODE`
+**Environment Variables**: `RUNNER_MAX_FAILURES`, `RUNNER_MAX_ACTIONS_PER_STEP`, `RUNNER_STEP_TIMEOUT`, `RUNNER_USE_VISION`, `RUNNER_ASSUME_YES`, `RUNNER_YOLO_MODE`, `RUNNER_AUTO_SUBMIT`
 
 **Validation**:
 - `runner_max_failures`: Must be > 0
 - `runner_max_actions_per_step`: Must be > 0
 - `runner_step_timeout`: Must be > 0
 - `runner_use_vision`: Must be one of: "auto", "true", "false"
+- `runner_auto_submit`: Requires both `runner_yolo_mode=True` and `runner_assume_yes=True`
 
 #### Domain Restrictions
 

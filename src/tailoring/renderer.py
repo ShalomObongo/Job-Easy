@@ -440,6 +440,7 @@ class PDFRenderer:
             phone=resume.phone,
             location=resume.location,
             linkedin_url=resume.linkedin_url,
+            github_url=resume.github_url,
             summary=resume.summary,
             sections=self._prepare_resume_sections(resume.sections),
             keywords_used=resume.keywords_used,
