@@ -569,8 +569,8 @@ class TestCalculateFitScore:
         from src.scoring.models import Education, UserProfile
         from src.scoring.service import FitScoringService
 
-        config = ScoringConfig(
-            _env_file=None,
+        config = ScoringConfig(  # type: ignore[call-arg]
+            _env_file=None,  # type: ignore[call-arg]
             weight_must_have=0.25,
             weight_preferred=0.25,
             weight_experience=0.25,
@@ -621,7 +621,7 @@ class TestCalculateFitScore:
         from src.scoring.models import UserProfile
         from src.scoring.service import FitScoringService
 
-        config = ScoringConfig(_env_file=None)
+        config = ScoringConfig(_env_file=None)  # type: ignore[call-arg]
         service = FitScoringService(config=config)
 
         job = JobDescription(
@@ -712,7 +712,7 @@ class TestConstraintLocation:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(_env_file=None, location_strict=True)
+            config=ScoringConfig(_env_file=None, location_strict=True)  # type: ignore[call-arg]
         )
 
         job = JobDescription(
@@ -746,7 +746,7 @@ class TestConstraintLocation:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(_env_file=None, location_strict=False)
+            config=ScoringConfig(_env_file=None, location_strict=False)  # type: ignore[call-arg]
         )
 
         job = JobDescription(
@@ -778,7 +778,7 @@ class TestConstraintLocation:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(_env_file=None, location_strict=True)
+            config=ScoringConfig(_env_file=None, location_strict=True)  # type: ignore[call-arg]
         )
 
         job = JobDescription(
@@ -891,7 +891,7 @@ class TestConstraintVisa:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(_env_file=None, visa_strict=True)
+            config=ScoringConfig(_env_file=None, visa_strict=True)  # type: ignore[call-arg]
         )
 
         job = JobDescription(
@@ -922,7 +922,7 @@ class TestConstraintVisa:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(_env_file=None, visa_strict=True)
+            config=ScoringConfig(_env_file=None, visa_strict=True)  # type: ignore[call-arg]
         )
 
         job = JobDescription(
@@ -981,7 +981,7 @@ class TestConstraintExperience:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(_env_file=None, experience_tolerance_years=2)
+            config=ScoringConfig(_env_file=None, experience_tolerance_years=2)  # type: ignore[call-arg]
         )
 
         job = JobDescription(
@@ -1012,7 +1012,7 @@ class TestConstraintExperience:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(_env_file=None, experience_tolerance_years=2)
+            config=ScoringConfig(_env_file=None, experience_tolerance_years=2)  # type: ignore[call-arg]
         )
 
         job = JobDescription(
@@ -1070,7 +1070,7 @@ class TestConstraintSalary:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(_env_file=None, salary_strict=True)
+            config=ScoringConfig(_env_file=None, salary_strict=True)  # type: ignore[call-arg]
         )
 
         job = JobDescription(
@@ -1102,7 +1102,7 @@ class TestConstraintSalary:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(_env_file=None, salary_strict=True)
+            config=ScoringConfig(_env_file=None, salary_strict=True)  # type: ignore[call-arg]
         )
 
         job = JobDescription(
@@ -1250,7 +1250,7 @@ class TestConstraintCombined:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(_env_file=None, location_strict=False)
+            config=ScoringConfig(_env_file=None, location_strict=False)  # type: ignore[call-arg]
         )
 
         job = JobDescription(
@@ -1282,8 +1282,8 @@ class TestConstraintCombined:
         from src.scoring.service import FitScoringService
 
         service = FitScoringService(
-            config=ScoringConfig(
-                _env_file=None,
+            config=ScoringConfig(  # type: ignore[call-arg]
+                _env_file=None,  # type: ignore[call-arg]
                 location_strict=True,
                 visa_strict=True,
                 salary_strict=True,
@@ -1333,7 +1333,9 @@ class TestEvaluationRecommendation:
 
         service = FitScoringService(
             config=ScoringConfig(
-                _env_file=None, fit_score_threshold=0.75, review_margin=0.05
+                _env_file=None,  # type: ignore[call-arg]
+                fit_score_threshold=0.75,
+                review_margin=0.05,
             )
         )
 
@@ -1383,7 +1385,9 @@ class TestEvaluationRecommendation:
 
         service = FitScoringService(
             config=ScoringConfig(
-                _env_file=None, fit_score_threshold=0.75, review_margin=0.05
+                _env_file=None,  # type: ignore[call-arg]
+                fit_score_threshold=0.75,
+                review_margin=0.05,
             )
         )
 
@@ -1437,7 +1441,9 @@ class TestEvaluateMethod:
 
         service = FitScoringService(
             config=ScoringConfig(
-                _env_file=None, fit_score_threshold=0.75, review_margin=0.05
+                _env_file=None,  # type: ignore[call-arg]
+                fit_score_threshold=0.75,
+                review_margin=0.05,
             )
         )
 
@@ -1476,7 +1482,9 @@ class TestEvaluateMethod:
 
         service = FitScoringService(
             config=ScoringConfig(
-                _env_file=None, fit_score_threshold=0.75, review_margin=0.05
+                _env_file=None,  # type: ignore[call-arg]
+                fit_score_threshold=0.75,
+                review_margin=0.05,
             )
         )
 
@@ -1619,7 +1627,9 @@ class TestFormatResult:
 
         service = FitScoringService(
             config=ScoringConfig(
-                _env_file=None, fit_score_threshold=0.75, review_margin=0.05
+                _env_file=None,  # type: ignore[call-arg]
+                fit_score_threshold=0.75,
+                review_margin=0.05,
             )
         )
 
@@ -1669,7 +1679,9 @@ class TestFormatResult:
 
         service = FitScoringService(
             config=ScoringConfig(
-                _env_file=None, fit_score_threshold=0.75, review_margin=0.05
+                _env_file=None,  # type: ignore[call-arg]
+                fit_score_threshold=0.75,
+                review_margin=0.05,
             )
         )
 
@@ -1710,4 +1722,134 @@ class TestFormatResult:
 
         result = service.evaluate(job, profile)
 
+        assert result.recommendation == "skip"
+
+
+class TestEvaluationLLMMode:
+    """Test LLM-primary scoring mode integration."""
+
+    def test_llm_mode_uses_llm_score_and_recommendation(self, monkeypatch) -> None:
+        from src.extractor.models import JobDescription
+        from src.scoring.config import ScoringConfig
+        from src.scoring.llm import ScoringLLM
+        from src.scoring.models import LLMFitEvaluation, UserProfile
+        from src.scoring.service import FitScoringService
+
+        config = ScoringConfig(_env_file=None, scoring_mode="llm", llm_max_retries=0)  # type: ignore[call-arg]
+        service = FitScoringService(config=config)
+
+        job = JobDescription(
+            company="ExampleCo", role_title="Engineer", job_url="https://x"
+        )
+        profile = UserProfile(
+            name="Jane Doe",
+            email="jane@example.com",
+            location="Remote",
+            skills=["python"],
+            years_of_experience=3,
+        )
+
+        monkeypatch.setattr(
+            ScoringLLM,
+            "generate_structured",
+            lambda *_args, **_kwargs: LLMFitEvaluation(
+                total_score=0.9,
+                recommendation="apply",
+                reasoning="LLM says strong fit",
+                must_have_matched=["python"],
+                must_have_missing=[],
+                preferred_matched=[],
+                risk_flags=[],
+            ),
+        )
+
+        result = service.evaluate(job, profile)
+
+        assert result.score_source == "llm"
+        assert result.fit_score.total_score == 0.9
+        assert result.recommendation == "apply"
+        assert result.reasoning == "LLM says strong fit"
+        assert result.fit_score.must_have_matched == ["python"]
+        assert result.fit_score.risk_flags == []
+        assert result.baseline_fit_score is not None
+        assert result.baseline_recommendation is not None
+
+    def test_llm_mode_failure_falls_back_to_deterministic(self, monkeypatch) -> None:
+        from src.extractor.models import JobDescription
+        from src.scoring.config import ScoringConfig
+        from src.scoring.llm import ScoringLLM, ScoringLLMError
+        from src.scoring.models import UserProfile
+        from src.scoring.service import FitScoringService
+
+        config = ScoringConfig(_env_file=None, scoring_mode="llm", llm_max_retries=0)  # type: ignore[call-arg]
+        service = FitScoringService(config=config)
+
+        job = JobDescription(
+            company="ExampleCo",
+            role_title="Engineer",
+            job_url="https://x",
+            required_skills=["python"],
+        )
+        profile = UserProfile(
+            name="Jane Doe",
+            email="jane@example.com",
+            location="Remote",
+            skills=[],
+            years_of_experience=3,
+        )
+
+        monkeypatch.setattr(
+            ScoringLLM,
+            "generate_structured",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(ScoringLLMError("boom")),
+        )
+
+        result = service.evaluate(job, profile)
+
+        assert result.score_source == "fallback_deterministic"
+        assert result.fit_score.total_score < 1.0
+
+    def test_llm_mode_hard_constraints_force_skip(self, monkeypatch) -> None:
+        from src.extractor.models import JobDescription
+        from src.scoring.config import ScoringConfig
+        from src.scoring.llm import ScoringLLM
+        from src.scoring.models import LLMFitEvaluation, UserProfile
+        from src.scoring.service import FitScoringService
+
+        config = ScoringConfig(  # type: ignore[call-arg]
+            _env_file=None,  # type: ignore[call-arg]
+            scoring_mode="llm",
+            visa_strict=True,
+            llm_max_retries=0,
+        )
+        service = FitScoringService(config=config)
+
+        job = JobDescription(
+            company="ExampleCo",
+            role_title="Engineer",
+            job_url="https://x",
+            description="No visa sponsorship is available for this role.",
+        )
+        profile = UserProfile(
+            name="Jane Doe",
+            email="jane@example.com",
+            location="Remote",
+            skills=["python"],
+            years_of_experience=3,
+            visa_sponsorship_needed=True,
+        )
+
+        monkeypatch.setattr(
+            ScoringLLM,
+            "generate_structured",
+            lambda *_args, **_kwargs: LLMFitEvaluation(
+                total_score=1.0,
+                recommendation="apply",
+                reasoning="LLM thinks it's fine",
+            ),
+        )
+
+        result = service.evaluate(job, profile)
+
+        assert result.constraints.passed is False
         assert result.recommendation == "skip"

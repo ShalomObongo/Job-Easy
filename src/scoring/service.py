@@ -6,8 +6,16 @@ import re
 
 from src.extractor.models import JobDescription
 from src.scoring.config import ScoringConfig, get_scoring_config
+from src.scoring.llm import ScoringLLM, ScoringLLMError
 from src.scoring.matchers import expand_skills, find_matching_skills
-from src.scoring.models import ConstraintResult, FitResult, FitScore, UserProfile
+from src.scoring.models import (
+    ConstraintResult,
+    FitResult,
+    FitScore,
+    LLMFitEvaluation,
+    UserProfile,
+)
+from src.scoring.prompts import SCORING_LLM_SYSTEM_PROMPT, build_llm_fit_prompt
 
 
 class FitScoringService:
@@ -15,6 +23,75 @@ class FitScoringService:
 
     def __init__(self, config: ScoringConfig | None = None) -> None:
         self.config = config or get_scoring_config()
+
+        self._llm: ScoringLLM | None = None
+        if self.config.scoring_mode == "llm":
+            self._llm = ScoringLLM(config=self.config)
+
+    def _recommendation_from_score(
+        self, *, score: float, constraints: ConstraintResult
+    ) -> str:
+        threshold = self.config.fit_score_threshold
+        margin = self.config.review_margin
+
+        if not constraints.passed:
+            return "skip"
+        if score >= threshold:
+            return "apply"
+        if score >= max(0.0, threshold - margin):
+            return "review"
+        return "skip"
+
+    def _format_deterministic_reasoning(
+        self, *, fit_score: FitScore, constraints: ConstraintResult
+    ) -> str:
+        threshold = self.config.fit_score_threshold
+
+        reasoning_parts: list[str] = []
+        reasoning_parts.append(
+            f"fit_score={fit_score.total_score:.2f} threshold={threshold:.2f}"
+        )
+        if fit_score.must_have_missing:
+            reasoning_parts.append(
+                f"missing_required_skills={', '.join(fit_score.must_have_missing)}"
+            )
+        if not constraints.passed:
+            reasoning_parts.append(
+                f"hard_violations={'; '.join(constraints.hard_violations)}"
+            )
+        elif constraints.soft_warnings:
+            reasoning_parts.append(f"warnings={'; '.join(constraints.soft_warnings)}")
+
+        return " | ".join(reasoning_parts)
+
+    def _llm_to_fit_score(
+        self, *, job: JobDescription, llm: LLMFitEvaluation
+    ) -> FitScore:
+        required_total = len(llm.must_have_matched) + len(llm.must_have_missing)
+        if required_total:
+            must_have_score = len(llm.must_have_matched) / required_total
+        else:
+            must_have_score = 1.0
+
+        preferred_total = len(job.preferred_skills or [])
+        if preferred_total:
+            preferred_score = len(llm.preferred_matched) / preferred_total
+        else:
+            preferred_score = 1.0
+
+        return FitScore(
+            total_score=llm.total_score,
+            must_have_score=must_have_score,
+            must_have_matched=llm.must_have_matched,
+            must_have_missing=llm.must_have_missing,
+            preferred_score=preferred_score,
+            preferred_matched=llm.preferred_matched,
+            experience_score=1.0,
+            experience_reasoning="",
+            education_score=1.0,
+            education_reasoning="",
+            risk_flags=llm.risk_flags,
+        )
 
     def _build_available_skills(self, profile: UserProfile) -> list[str]:
         """Build a broad skill inventory from structured profile fields."""
@@ -213,46 +290,72 @@ class FitScoringService:
 
     def evaluate(self, job: JobDescription, profile: UserProfile) -> FitResult:
         """Run full evaluation: scoring, constraints, and recommendation."""
-        fit_score = self.calculate_fit_score(job, profile)
         constraints = self.check_constraints(job, profile)
 
-        threshold = self.config.fit_score_threshold
-        margin = self.config.review_margin
+        if self.config.scoring_mode != "llm":
+            fit_score = self.calculate_fit_score(job, profile)
+            recommendation = self._recommendation_from_score(
+                score=fit_score.total_score, constraints=constraints
+            )
+            reasoning = self._format_deterministic_reasoning(
+                fit_score=fit_score, constraints=constraints
+            )
+            return FitResult(
+                job_url=job.job_url,
+                job_title=job.role_title,
+                company=job.company,
+                fit_score=fit_score,
+                constraints=constraints,
+                recommendation=recommendation,  # type: ignore[arg-type]
+                reasoning=reasoning,
+                score_source="deterministic",
+            )
 
-        if not constraints.passed:
-            recommendation: str = "skip"
-        elif fit_score.total_score >= threshold:
-            recommendation = "apply"
-        elif fit_score.total_score >= max(0.0, threshold - margin):
-            recommendation = "review"
-        else:
-            recommendation = "skip"
-
-        reasoning_parts: list[str] = []
-        reasoning_parts.append(
-            f"fit_score={fit_score.total_score:.2f} threshold={threshold:.2f}"
+        baseline_fit_score = self.calculate_fit_score(job, profile)
+        baseline_recommendation = self._recommendation_from_score(
+            score=baseline_fit_score.total_score, constraints=constraints
         )
-        if fit_score.must_have_missing:
-            reasoning_parts.append(
-                f"missing_required_skills={', '.join(fit_score.must_have_missing)}"
-            )
-        if not constraints.passed:
-            reasoning_parts.append(
-                f"hard_violations={'; '.join(constraints.hard_violations)}"
-            )
-        elif constraints.soft_warnings:
-            reasoning_parts.append(f"warnings={'; '.join(constraints.soft_warnings)}")
 
-        reasoning = " | ".join(reasoning_parts)
+        llm_client = self._llm or ScoringLLM(config=self.config)
+        prompt = build_llm_fit_prompt(job=job, profile=profile, config=self.config)
+
+        try:
+            llm_eval = llm_client.generate_structured(
+                prompt=prompt,
+                output_model=LLMFitEvaluation,
+                system_prompt=SCORING_LLM_SYSTEM_PROMPT,
+            )
+        except ScoringLLMError:
+            reasoning = self._format_deterministic_reasoning(
+                fit_score=baseline_fit_score, constraints=constraints
+            )
+            return FitResult(
+                job_url=job.job_url,
+                job_title=job.role_title,
+                company=job.company,
+                fit_score=baseline_fit_score,
+                constraints=constraints,
+                recommendation=baseline_recommendation,  # type: ignore[arg-type]
+                reasoning=reasoning,
+                score_source="fallback_deterministic",
+            )
+
+        llm_fit_score = self._llm_to_fit_score(job=job, llm=llm_eval)
+        recommendation = llm_eval.recommendation
+        if not constraints.passed:
+            recommendation = "skip"
 
         return FitResult(
             job_url=job.job_url,
             job_title=job.role_title,
             company=job.company,
-            fit_score=fit_score,
+            fit_score=llm_fit_score,
             constraints=constraints,
-            recommendation=recommendation,  # type: ignore[arg-type]
-            reasoning=reasoning,
+            recommendation=recommendation,
+            reasoning=llm_eval.reasoning,
+            score_source="llm",
+            baseline_fit_score=baseline_fit_score,
+            baseline_recommendation=baseline_recommendation,  # type: ignore[arg-type]
         )
 
     def format_result(self, result: FitResult) -> str:
@@ -260,8 +363,14 @@ class FitScoringService:
         lines: list[str] = []
         lines.append(f"{result.company} — {result.job_title}")
         lines.append(f"URL: {result.job_url}")
+
+        source = (
+            getattr(result, "score_source", "deterministic") or "deterministic"
+        ).upper()
         lines.append(
-            f"Recommendation: {result.recommendation.upper()} (score={result.fit_score.total_score:.2f})"
+            "Recommendation: "
+            f"{result.recommendation.upper()} "
+            f"(score={result.fit_score.total_score:.2f}, source={source})"
         )
         lines.append(
             "Scores: "
@@ -281,6 +390,19 @@ class FitScoringService:
         if result.fit_score.preferred_matched:
             lines.append(
                 f"Preferred matched: {', '.join(result.fit_score.preferred_matched)}"
+            )
+
+        if result.fit_score.risk_flags:
+            lines.append(f"Risk flags: {', '.join(result.fit_score.risk_flags)}")
+
+        if (
+            result.baseline_fit_score is not None
+            and result.baseline_recommendation is not None
+        ):
+            lines.append(
+                "Baseline (deterministic): "
+                f"{result.baseline_recommendation.upper()} "
+                f"(score={result.baseline_fit_score.total_score:.2f})"
             )
 
         if result.constraints.passed:

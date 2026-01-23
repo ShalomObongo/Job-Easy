@@ -378,6 +378,178 @@ def test_cli_score_mode_writes_fit_result_json(monkeypatch, tmp_path) -> None:
     assert (tmp_path / "fit_result.json").exists()
 
 
+def test_cli_score_eval_mode_writes_report_json(monkeypatch, tmp_path) -> None:
+    from src.__main__ import main
+
+    input_dir = tmp_path / "input"
+    (input_dir / "a").mkdir(parents=True)
+    (input_dir / "b").mkdir(parents=True)
+
+    (input_dir / "a" / "jd.json").write_text(
+        json.dumps(
+            {
+                "company": "Acme",
+                "role_title": "Engineer",
+                "job_url": "https://example.com/jobs/1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (input_dir / "b" / "jd.json").write_text(
+        json.dumps(
+            {
+                "company": "Acme",
+                "role_title": "Engineer",
+                "job_url": "https://example.com/jobs/2",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text("{}\n", encoding="utf-8")
+
+    dummy_profile = UserProfile(
+        name="Test User",
+        email="test@example.com",
+        location="Remote",
+        skills=["python"],
+        years_of_experience=5,
+    )
+
+    def _load_profile(_self, _path=None):
+        return dummy_profile
+
+    def _evaluate(_self, job, _profile):
+        return FitResult(
+            job_url=job.job_url,
+            job_title=job.role_title,
+            company=job.company,
+            fit_score=FitScore(total_score=0.5, must_have_score=1.0),
+            constraints=ConstraintResult(passed=True),
+            recommendation="review",
+            reasoning="ok",
+        )
+
+    monkeypatch.setattr(
+        "src.scoring.profile.ProfileService.load_profile", _load_profile
+    )
+    monkeypatch.setattr("src.scoring.service.FitScoringService.evaluate", _evaluate)
+
+    exit_code = main(
+        [
+            "score-eval",
+            "--input",
+            str(input_dir),
+            "--profile",
+            str(profile_path),
+            "--out-run-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert (tmp_path / "score_eval_report.json").exists()
+
+
+def test_cli_score_eval_mode_resume_skips_already_evaluated(
+    monkeypatch, tmp_path
+) -> None:
+    from src.__main__ import main
+
+    input_dir = tmp_path / "input"
+    (input_dir / "a").mkdir(parents=True)
+    (input_dir / "b").mkdir(parents=True)
+
+    (input_dir / "a" / "jd.json").write_text(
+        json.dumps(
+            {
+                "company": "Acme",
+                "role_title": "Engineer",
+                "job_url": "https://example.com/jobs/1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (input_dir / "b" / "jd.json").write_text(
+        json.dumps(
+            {
+                "company": "Acme",
+                "role_title": "Engineer",
+                "job_url": "https://example.com/jobs/2",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text("{}\n", encoding="utf-8")
+
+    dummy_profile = UserProfile(
+        name="Test User",
+        email="test@example.com",
+        location="Remote",
+        skills=["python"],
+        years_of_experience=5,
+    )
+
+    def _load_profile(_self, _path=None):
+        return dummy_profile
+
+    called_urls: list[str] = []
+
+    def _evaluate(_self, job, _profile):
+        called_urls.append(job.job_url)
+        return FitResult(
+            job_url=job.job_url,
+            job_title=job.role_title,
+            company=job.company,
+            fit_score=FitScore(total_score=0.5, must_have_score=1.0),
+            constraints=ConstraintResult(passed=True),
+            recommendation="review",
+            reasoning="ok",
+        )
+
+    (tmp_path / "score_eval_report.json").write_text(
+        json.dumps(
+            {
+                "summary": {"total_jobs": 2, "evaluated": 1},
+                "items": [
+                    {
+                        "job_url": "https://example.com/jobs/1",
+                        "deterministic": {"recommendation": "apply"},
+                        "llm": {"recommendation": "apply", "score_source": "llm"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "src.scoring.profile.ProfileService.load_profile", _load_profile
+    )
+    monkeypatch.setattr("src.scoring.service.FitScoringService.evaluate", _evaluate)
+
+    exit_code = main(
+        [
+            "score-eval",
+            "--input",
+            str(input_dir),
+            "--profile",
+            str(profile_path),
+            "--out-run-dir",
+            str(tmp_path),
+            "--resume",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (tmp_path / "score_eval_report.json").exists()
+    assert set(called_urls) == {"https://example.com/jobs/2"}
+    assert len(called_urls) == 2
+
+
 def test_cli_tailor_mode_writes_review_packet_json(monkeypatch, tmp_path) -> None:
     from src.__main__ import main
 

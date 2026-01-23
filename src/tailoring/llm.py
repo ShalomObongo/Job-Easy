@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import warnings
 from typing import TypeVar
 
-from litellm import Timeout, acompletion
 from pydantic import BaseModel, ValidationError
 
 from src.tailoring.config import TailoringConfig, get_tailoring_config
@@ -25,6 +25,11 @@ warnings.filterwarnings(
     message=r"(?s)^Pydantic serializer warnings:.*",
     category=UserWarning,
 )
+
+
+# LiteLLM loads `.env` into process environment by default (DEV mode).
+# This can cause surprising side-effects in tests and library usage.
+os.environ.setdefault("LITELLM_MODE", "PRODUCTION")
 
 
 class LLMError(Exception):
@@ -115,6 +120,8 @@ class TailoringLLM:
         Raises:
             LLMError: If the LLM call fails or response cannot be parsed.
         """
+        from litellm.exceptions import Timeout
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -177,6 +184,8 @@ class TailoringLLM:
         Raises:
             LLMError: If the LLM call fails.
         """
+        from litellm.exceptions import Timeout
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -228,6 +237,8 @@ class TailoringLLM:
         Returns:
             LiteLLM completion response.
         """
+        from litellm import acompletion
+
         kwargs = {
             "model": self._get_model_name(),
             "messages": messages,

@@ -186,6 +186,7 @@ Run individual stages:
 |---------|--------------|
 | `python -m src extract <url>` | 🔍 Extract job data |
 | `python -m src score --jd <file> --profile <file>` | 📊 Score job fit |
+| `python -m src score-eval --input <path> --profile <file>` | 🧪 Compare deterministic vs LLM scoring |
 | `python -m src tailor --jd <file> --profile <file>` | 📝 Generate documents |
 | `python -m src apply <url> --resume <file>` | ✅ Run application (runner only) |
 | `python -m src queue <leads> --profile <file>` | 📋 Preview ranked batch |
@@ -202,6 +203,7 @@ Run individual stages:
 | `EXTRACTOR_LLM_PROVIDER` | `openai`, `anthropic`, or `auto` |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Your LLM credentials |
 | `SCORING_PROFILE_PATH` | Path to your profile YAML |
+| `SCORING_SCORING_MODE` | `deterministic` or `llm` |
 
 ### Scoring Weights
 

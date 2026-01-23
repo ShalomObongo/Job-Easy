@@ -35,11 +35,14 @@ The scoring module:
 ```
 src/scoring/
 ├── __init__.py           # Public API exports
-├── models.py             # Data models (UserProfile, FitScore, FitResult, etc.)
 ├── config.py             # Configuration settings and weights
-├── service.py            # FitScoringService - main scoring logic
+├── evaluation.py         # Scoring evaluation harness (score-eval)
+├── llm.py                # LiteLLM scoring client (structured output)
+├── matchers.py           # Skill matching utilities (fuzzy matching, normalization)
+├── models.py             # Data models (UserProfile, FitScore, FitResult, etc.)
 ├── profile.py            # ProfileService - profile loading/validation
-└── matchers.py           # Skill matching utilities (fuzzy matching, normalization)
+├── prompts.py            # Prompt builders for LLM scoring
+└── service.py            # FitScoringService - main scoring logic
 ```
 
 ### Key Components
@@ -154,6 +157,7 @@ class FitScore:
     experience_reasoning: str             # Explanation of experience score
     education_score: float                # Education match (0.0-1.0)
     education_reasoning: str              # Explanation of education score
+    risk_flags: list[str]                 # Uncertainties/risks (primarily for LLM mode)
 ```
 
 **Score Components:**
@@ -199,6 +203,9 @@ class FitResult:
     constraints: ConstraintResult
     recommendation: Literal["apply", "skip", "review"]
     reasoning: str
+    score_source: Literal["deterministic", "llm", "fallback_deterministic"]
+    baseline_fit_score: FitScore | None
+    baseline_recommendation: Literal["apply", "skip", "review"] | None
     evaluated_at: datetime
 ```
 
@@ -221,6 +228,9 @@ class ScoringConfig(BaseSettings):
     # Profile settings
     profile_path: Path = Path("profiles/profile.yaml")
 
+    # Scoring mode
+    scoring_mode: Literal["deterministic", "llm"] = "deterministic"
+
     # Threshold settings
     fit_score_threshold: float = 0.75          # Minimum score for 'apply'
     review_margin: float = 0.05                # Margin for 'review' recommendation
@@ -240,6 +250,15 @@ class ScoringConfig(BaseSettings):
     location_strict: bool = False              # Hard location constraint
     visa_strict: bool = True                   # Hard visa constraint
     salary_strict: bool = False                # Hard salary constraint
+
+    # LLM scoring settings (used when scoring_mode == "llm")
+    llm_provider: str = "openai"
+    llm_model: str = "gpt-4o"
+    llm_api_key: str | None = None
+    llm_base_url: str | None = None
+    llm_timeout: float = 60.0
+    llm_max_retries: int = 1
+    llm_reasoning_effort: str | None = None
 ```
 
 **Environment Variables:**
@@ -248,6 +267,9 @@ All settings can be overridden via environment variables with `SCORING_` prefix:
 
 ```bash
 export SCORING_FIT_SCORE_THRESHOLD=0.80
+export SCORING_SCORING_MODE=llm
+export SCORING_LLM_PROVIDER=openai
+export SCORING_LLM_MODEL=gpt-4o
 export SCORING_WEIGHT_MUST_HAVE=0.50
 export SCORING_WEIGHT_PREFERRED=0.15
 export SCORING_WEIGHT_EXPERIENCE=0.25
@@ -255,6 +277,15 @@ export SCORING_WEIGHT_EDUCATION=0.10
 export SCORING_SKILL_FUZZY_THRESHOLD=0.90
 export SCORING_VISA_STRICT=true
 ```
+
+### LLM Scoring Mode
+
+Enable LLM-primary scoring by setting `SCORING_SCORING_MODE=llm`.
+
+- Deterministic constraints always run and can force a `skip`.
+- The LLM output becomes the primary score + recommendation.
+- Deterministic scoring is also computed as a baseline for comparison.
+- If the LLM call fails, scoring falls back to deterministic and records that in `score_source`.
 
 **Configuration Singleton:**
 
@@ -1310,6 +1341,8 @@ python -m src score --jd jd.json --profile profile.yaml --out-run-dir ./output
 python -m src score --jd jd.json --profile profiles/senior.yaml
 ```
 
+To enable LLM scoring for `score`, set `SCORING_SCORING_MODE=llm` and configure `SCORING_LLM_*` (see `.env.example`).
+
 **Output Files:**
 - `fit_result.json` - Full FitResult JSON
 - Console output - Formatted scoring summary
@@ -1327,6 +1360,18 @@ Constraints: PASSED
 Warnings: Salary currency mismatch (job=EUR, profile=USD)
 Reasoning: fit_score=0.87 threshold=0.75 | warnings=Salary currency mismatch (job=EUR, profile=USD)
 ```
+
+### Score Eval Command
+
+Compare deterministic vs LLM scoring over a dataset:
+
+```bash
+# Input can be: jd.json, queue.json, or a directory containing jd.json files
+python -m src score-eval --input <path> --profile profiles/profile.yaml --limit 25 --resume
+```
+
+**Output Files:**
+- `score_eval_report.json` - Comparison report (per-job items + summary metrics)
 
 ### Queue Command
 

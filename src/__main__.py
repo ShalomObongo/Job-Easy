@@ -187,6 +187,41 @@ For more information, see the documentation in docs/
         help="Optional output run directory (defaults under artifacts/runs/)",
     )
 
+    # Component mode: score-eval
+    score_eval_parser = subparsers.add_parser(
+        "score-eval",
+        help="Evaluate and compare deterministic vs LLM fit scoring",
+    )
+    score_eval_parser.add_argument(
+        "--input",
+        type=Path,
+        required=True,
+        help="Path to jd.json, queue.json, or a directory containing jd.json files",
+    )
+    score_eval_parser.add_argument(
+        "--profile",
+        type=Path,
+        required=True,
+        help="Path to profile (YAML or JSON)",
+    )
+    score_eval_parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional limit on jobs evaluated (cost control)",
+    )
+    score_eval_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from an existing report in the run directory",
+    )
+    score_eval_parser.add_argument(
+        "--out-run-dir",
+        type=Path,
+        default=None,
+        help="Optional output run directory (defaults under artifacts/runs/)",
+    )
+
     # Component mode: tailor
     tailor_parser = subparsers.add_parser(
         "tailor",
@@ -479,6 +514,7 @@ def main(args: list[str] | None = None) -> int:
             "job_url": fit.job_url,
             "job_title": fit.job_title,
             "company": fit.company,
+            "score_source": getattr(fit, "score_source", None),
             "fit_score": {
                 "total_score": fit.fit_score.total_score,
                 "must_have_score": fit.fit_score.must_have_score,
@@ -490,7 +526,9 @@ def main(args: list[str] | None = None) -> int:
                 "experience_reasoning": fit.fit_score.experience_reasoning,
                 "education_score": fit.fit_score.education_score,
                 "education_reasoning": fit.fit_score.education_reasoning,
+                "risk_flags": getattr(fit.fit_score, "risk_flags", []),
             },
+            "baseline": None,
             "constraints": {
                 "passed": fit.constraints.passed,
                 "hard_violations": fit.constraints.hard_violations,
@@ -501,9 +539,103 @@ def main(args: list[str] | None = None) -> int:
             "evaluated_at": fit.evaluated_at.isoformat(),
         }
 
+        baseline_fit_score = getattr(fit, "baseline_fit_score", None)
+        baseline_recommendation = getattr(fit, "baseline_recommendation", None)
+        if baseline_fit_score is not None and baseline_recommendation is not None:
+            fit_payload["baseline"] = {
+                "recommendation": baseline_recommendation,
+                "fit_score": {
+                    "total_score": baseline_fit_score.total_score,
+                    "must_have_score": baseline_fit_score.must_have_score,
+                    "must_have_matched": baseline_fit_score.must_have_matched,
+                    "must_have_missing": baseline_fit_score.must_have_missing,
+                    "preferred_score": baseline_fit_score.preferred_score,
+                    "preferred_matched": baseline_fit_score.preferred_matched,
+                    "experience_score": baseline_fit_score.experience_score,
+                    "experience_reasoning": baseline_fit_score.experience_reasoning,
+                    "education_score": baseline_fit_score.education_score,
+                    "education_reasoning": baseline_fit_score.education_reasoning,
+                    "risk_flags": getattr(baseline_fit_score, "risk_flags", []),
+                },
+            }
+
         output_path = run_dir / "fit_result.json"
         _write_json(output_path, fit_payload)
         print(f"Wrote: {output_path}")
+
+        return 0
+
+    if parsed.mode == "score-eval":
+        from src.scoring.config import ScoringConfig
+        from src.scoring.evaluation import (
+            build_score_eval_report,
+            load_job_descriptions,
+            summarize_score_eval_items,
+        )
+        from src.scoring.profile import ProfileService
+        from src.scoring.service import FitScoringService
+
+        run_dir = _resolve_run_dir(
+            settings,
+            prefix="score-eval",
+            out_run_dir=getattr(parsed, "out_run_dir", None),
+        )
+
+        profile = ProfileService().load_profile(parsed.profile)
+
+        all_jobs = load_job_descriptions(parsed.input)
+        jobs_to_eval = all_jobs
+
+        report_path = run_dir / "score_eval_report.json"
+        existing_items: list[dict] = []
+        existing_urls: set[str] = set()
+
+        if getattr(parsed, "resume", False) and report_path.exists():
+            existing = _load_json(report_path)
+            if isinstance(existing, dict) and isinstance(existing.get("items"), list):
+                existing_items = [
+                    item for item in existing["items"] if isinstance(item, dict)
+                ]
+                for item in existing_items:
+                    url = item.get("job_url")
+                    if isinstance(url, str) and url:
+                        existing_urls.add(url)
+            jobs_to_eval = [job for job in all_jobs if job.job_url not in existing_urls]
+
+        deterministic_scorer = FitScoringService(
+            config=ScoringConfig(scoring_mode="deterministic")
+        )
+        llm_scorer = FitScoringService(config=ScoringConfig(scoring_mode="llm"))
+
+        new_report = build_score_eval_report(
+            jobs=jobs_to_eval,
+            profile=profile,
+            deterministic_scorer=deterministic_scorer,
+            llm_scorer=llm_scorer,
+            limit=getattr(parsed, "limit", None),
+        )
+
+        report = new_report
+        if existing_items:
+            combined_items = existing_items + new_report.get("items", [])
+            report = {
+                "summary": summarize_score_eval_items(
+                    total_jobs=len(all_jobs),
+                    items=combined_items,
+                ),
+                "items": combined_items,
+            }
+
+        _write_json(report_path, report)
+        print(f"Wrote: {report_path}")
+
+        summary = report.get("summary") if isinstance(report, dict) else None
+        if isinstance(summary, dict):
+            print(
+                "Jobs: "
+                f"total={summary.get('total_jobs')} evaluated={summary.get('evaluated')} "
+                f"disagreements={summary.get('disagreements')} llm_failures={summary.get('llm_failures')}"
+            )
 
         return 0
 
