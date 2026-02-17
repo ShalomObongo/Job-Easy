@@ -392,10 +392,11 @@ Applicant info (sensitive placeholders; never invent values):
 
 Form filling rules:
 {form_rule_0}
-1) For dropdowns/combobox fields, do NOT type with input(). Instead:
-   - Use dropdown_options(index) to see available options (if needed), then
-   - Use select_dropdown(index, text) with the exact visible option text.
-   - If dropdown_options returns no options OR select_dropdown fails but the options are visibly open on screen, use click_visible_option(option_text, browser_session) as a fallback.
+1) For dropdown/select fields, do NOT type with input().
+   - Native <select> / listbox-style controls: use dropdown_options(index) (optional) then select_dropdown(index, text).
+   - Combobox fields (role="combobox", React-select style): prefer select_dropdown(index, text) directly.
+   - If a combobox is collapsed, click its toggle flyout first, then select the visible option text.
+   - If select_dropdown fails but options are visibly open, use click_visible_option(option_text, browser_session) as fallback.
 2) Run preflight_check(browser_session) before attempting to submit. If it returns any blockers, do NOT submit; fill those missing/invalid required fields and re-run preflight_check until it returns [].
    - Note: some fields (especially textareas inside shadow DOM) may not show their current value in browser_state; preflight_check is the source of truth for whether required fields are still missing.
 3) If browser_state shows required-field errors (e.g. "This field is required.", "Resume/CV is required.", or invalid=true on required inputs), you are NOT at the final submit step yet. Fix missing fields/uploads first.

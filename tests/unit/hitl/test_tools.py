@@ -193,6 +193,7 @@ def test_create_hitl_tools_registers_custom_form_actions() -> None:
 
     for name in (
         "input",
+        "dropdown_options",
         "select_dropdown",
         "upload_file",
         "mark_field_intentionally_blank",

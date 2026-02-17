@@ -9,6 +9,7 @@ This module provides:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from pathlib import Path
@@ -321,6 +322,113 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
         )
         return str(raw or "")
 
+    async def _read_dropdown_meta(element) -> dict[str, str]:
+        raw = await element.evaluate(
+            """
+() => JSON.stringify({
+  tag: (this && this.tagName) ? this.tagName.toLowerCase() : '',
+  role: (this && this.getAttribute) ? String(this.getAttribute('role') || '') : '',
+  className: (this && this.className) ? String(this.className) : '',
+  ariaExpanded: (this && this.getAttribute) ? String(this.getAttribute('aria-expanded') || '') : '',
+  ariaControls: (this && this.getAttribute) ? String(this.getAttribute('aria-controls') || '') : '',
+})
+"""
+        )
+        try:
+            decoded = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            decoded = {}
+
+        if not isinstance(decoded, dict):
+            return {}
+        return {key: str(value or "") for key, value in decoded.items()}
+
+    async def _expand_combobox(element) -> None:
+        await element.evaluate(
+            """
+() => {
+  const el = this;
+  if (!el) return false;
+
+  const clickNode = (node) => {
+    if (!node || typeof node.click !== 'function') return false;
+    try {
+      node.click();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  // Focus/click the combobox input itself first.
+  try { el.focus?.(); } catch (_) {}
+  try {
+    el.dispatchEvent(new FocusEvent('focusin', { bubbles: true, cancelable: true }));
+  } catch (_) {}
+  clickNode(el);
+
+  // Greenhouse/React-Select often requires clicking the explicit toggle control.
+  const root =
+    el.closest('[class*="select__control"]') ||
+    el.closest('[class*="select__container"]') ||
+    el.closest('[role="group"]') ||
+    el.parentElement;
+  if (root) {
+    const toggle =
+      root.querySelector('button[aria-label*="Toggle"]') ||
+      root.querySelector('button[aria-label*="toggle"]') ||
+      root.querySelector('[aria-label*="Toggle flyout"]');
+    clickNode(toggle);
+  }
+
+  return true;
+}
+"""
+        )
+
+    async def _extract_visible_combobox_options(element) -> list[str]:
+        raw = await element.evaluate(
+            """
+() => {
+  const normalize = (value) => String(value || '').trim();
+  const isVisible = (node) => {
+    if (!node || node.nodeType !== 1) return false;
+    const style = window.getComputedStyle(node);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+
+  const results = [];
+  const controlsId = this && this.getAttribute ? this.getAttribute('aria-controls') : '';
+  const pushOption = (node) => {
+    const text = normalize(node && (node.innerText || node.textContent || node.value));
+    if (text) results.push(text);
+  };
+
+  if (controlsId) {
+    const listbox = document.getElementById(controlsId);
+    if (listbox) {
+      listbox
+        .querySelectorAll('[role="option"], option')
+        .forEach((node) => isVisible(node) && pushOption(node));
+    }
+  }
+
+  if (!results.length) {
+    document
+      .querySelectorAll('[role="option"], option')
+      .forEach((node) => isVisible(node) && pushOption(node));
+  }
+
+  return Array.from(new Set(results));
+}
+"""
+        )
+        if isinstance(raw, list):
+            return [str(item) for item in raw if str(item).strip()]
+        return []
+
     async def _verify_file_attached(element) -> tuple[int, list[str]]:
         raw = await element.evaluate(
             """
@@ -524,6 +632,77 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
 
     @tools.action(
         description=(
+            "Get dropdown options by index with combobox support. "
+            "For React/ARIA comboboxes, this opens the menu first and extracts visible options."
+        )
+    )
+    async def dropdown_options(index: int, browser_session) -> ActionResult:
+        node = await browser_session.get_dom_element_by_index(index)
+        if node is None:
+            msg = (
+                f"Element index {index} not available - page may have changed. "
+                "Try refreshing browser state."
+            )
+            logger.warning(msg)
+            return ActionResult(extracted_content=msg)
+
+        from browser_use.browser.events import GetDropdownOptionsEvent
+
+        element = await _build_element_for_node(browser_session, node)
+        meta = await _read_dropdown_meta(element)
+        is_combobox = meta.get("role") == "combobox"
+
+        # Many React-select controls don't expose aria-controls until expanded.
+        if is_combobox and not meta.get("ariaControls"):
+            with contextlib.suppress(Exception):
+                await _expand_combobox(element)
+                await asyncio.sleep(0.12)
+
+        try:
+            event = browser_session.event_bus.dispatch(GetDropdownOptionsEvent(node=node))
+            dropdown_data = await event.event_result(timeout=3.0)
+
+            if isinstance(dropdown_data, dict):
+                short_term = str(dropdown_data.get("short_term_memory") or "").strip()
+                long_term = str(dropdown_data.get("long_term_memory") or "").strip()
+                if short_term:
+                    return ActionResult(
+                        extracted_content=short_term,
+                        long_term_memory=long_term or f"Got dropdown options for index {index}",
+                        include_extracted_content_only_once=True,
+                    )
+        except Exception as exc:
+            logger.warning("dropdown_options event failed at index %s: %s", index, exc)
+
+        # Fallback for combobox/listbox patterns where built-in extraction fails.
+        with contextlib.suppress(Exception):
+            await _expand_combobox(element)
+            await asyncio.sleep(0.12)
+
+        options = await _extract_visible_combobox_options(element)
+        if options:
+            lines = [
+                f'Found dropdown options for index {index}:',
+                *[f'{i}: text={json.dumps(option)}' for i, option in enumerate(options)],
+                "",
+                f"Use select_dropdown(index={index}, text=...) with exact option text.",
+            ]
+            msg = "\n".join(lines)
+            return ActionResult(
+                extracted_content=msg,
+                long_term_memory=f"Got dropdown options for index {index}",
+                include_extracted_content_only_once=True,
+            )
+
+        return ActionResult(
+            error=(
+                f"Failed to get dropdown options for index {index}. "
+                "Try select_dropdown directly with visible option text."
+            )
+        )
+
+    @tools.action(
+        description=(
             "Select a dropdown option by exact visible text (with verification + fallback). "
             "If the built-in selection fails but options are visible, uses click_visible_option."
         )
@@ -544,6 +723,13 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
 
         from browser_use.browser.events import SelectDropdownOptionEvent
 
+        element = await _build_element_for_node(browser_session, node)
+        meta = await _read_dropdown_meta(element)
+        if meta.get("role") == "combobox" and not meta.get("ariaControls"):
+            with contextlib.suppress(Exception):
+                await _expand_combobox(element)
+                await asyncio.sleep(0.12)
+
         selection_data: dict[str, str] | None = None
         try:
             event = browser_session.event_bus.dispatch(
@@ -556,8 +742,7 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
         success = bool(selection_data and selection_data.get("success") == "true")
         if not success:
             try:
-                element = await _build_element_for_node(browser_session, node)
-                await element.click()
+                await _expand_combobox(element)
                 await asyncio.sleep(0.05)
             except Exception:
                 pass
@@ -577,6 +762,25 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
                 return ActionResult(
                     extracted_content=msg,
                     long_term_memory=f"Selected dropdown option '{text}' at index {index}",
+                )
+
+            # Last attempt: allow partial text match for dynamic option labels.
+            fallback_raw = await click_visible_option(
+                option_text=text,
+                browser_session=browser_session,
+                exact_match=False,
+            )
+            try:
+                fallback = json.loads(fallback_raw) if fallback_raw else {}
+            except json.JSONDecodeError:
+                fallback = {}
+
+            if isinstance(fallback, dict) and fallback.get("status") == "clicked":
+                chosen = str(fallback.get("chosen") or text).strip()
+                msg = f"Selected option: {chosen}"
+                return ActionResult(
+                    extracted_content=msg,
+                    long_term_memory=f"Selected dropdown option '{chosen}' at index {index}",
                 )
 
             error = (
@@ -1231,6 +1435,46 @@ async def preflight_find_blockers(browser_session: BrowserSession) -> list[str]:
     return norm === '' || PLACEHOLDERS.has(norm);
   }};
 
+  const hasComboboxSelection = (el) => {{
+    if (!el || !el.getAttribute) return false;
+    if (String(el.getAttribute('role') || '').toLowerCase() !== 'combobox') return false;
+
+    const owner = el.ownerDocument || document;
+    const controlsId = String(el.getAttribute('aria-controls') || '').trim();
+    if (controlsId) {{
+      const listbox = owner.getElementById(controlsId);
+      if (listbox) {{
+        const selected = listbox.querySelector('[role=\"option\"][aria-selected=\"true\"]');
+        if (selected && normalize(selected.textContent || selected.innerText || selected.value)) {{
+          return true;
+        }}
+      }}
+    }}
+
+    const root =
+      el.closest('[class*=\"select__control\"]') ||
+      el.closest('[class*=\"select__container\"]') ||
+      el.closest('[role=\"group\"]') ||
+      el.parentElement;
+    if (!root) return false;
+
+    if (root.querySelector('[aria-label=\"Clear selections\"]')) return true;
+
+    const selectedNode = root.querySelector(
+      '.select__single-value, [class*=\"single-value\"], [class*=\"multi-value__label\"], [aria-selected=\"true\"]'
+    );
+    if (selectedNode && normalize(selectedNode.textContent || selectedNode.innerText)) {{
+      return true;
+    }}
+
+    const valueContainer = root.querySelector('.select__value-container, [class*=\"value-container\"]');
+    if (valueContainer && /has-value|selected/i.test(String(valueContainer.className || ''))) {{
+      return true;
+    }}
+
+    return false;
+  }};
+
   const addUnique = (set, item) => {{
     const value = String(item || '').trim();
     if (value) set.add(value);
@@ -1282,7 +1526,10 @@ async def preflight_find_blockers(browser_session: BrowserSession) -> list[str]:
 
         const required = isRequired(el);
         const value = String(el.value || '');
-        if (required && isPlaceholderValue(value)) addUnique(out.missing, labelFor(el));
+        const comboboxSelected = hasComboboxSelection(el);
+        if (required && !comboboxSelected && isPlaceholderValue(value)) {{
+          addUnique(out.missing, labelFor(el));
+        }}
 
         const ariaInvalid = el.getAttribute('aria-invalid') === 'true';
         const invalid = ariaInvalid || (typeof el.checkValidity === 'function' && !el.checkValidity());

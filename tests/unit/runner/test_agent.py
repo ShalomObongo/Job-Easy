@@ -196,3 +196,4 @@ def test_get_application_prompt_includes_yolo_context() -> None:
     assert "Files available for upload" in prompt
     assert "artifacts/runs/example/resume.pdf" in prompt
     assert "confirm_submit" in prompt
+    assert 'Combobox fields (role="combobox", React-select style)' in prompt
