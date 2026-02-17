@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
-from weasyprint import HTML
 
 from src.tailoring.config import TailoringConfig, get_tailoring_config
 from src.tailoring.models import CoverLetter, TailoredResume
@@ -69,6 +68,15 @@ class PDFRenderer:
         if styles_path.exists():
             return styles_path.read_text()
         return ""
+
+    def _get_weasyprint_html(self):
+        try:
+            from weasyprint import HTML  # type: ignore[import-not-found]
+        except Exception as exc:
+            raise RuntimeError(
+                "WeasyPrint is not available (missing package or system dependencies)."
+            ) from exc
+        return HTML
 
     def _prepare_resume_sections(self, sections: list[Any]) -> list[dict[str, Any]]:
         """Prepare resume sections for rendering.
@@ -495,7 +503,8 @@ class PDFRenderer:
             output_path = output_dir / filename
 
             # Render to PDF
-            HTML(string=html_content).write_pdf(str(output_path))
+            html = self._get_weasyprint_html()
+            html(string=html_content).write_pdf(str(output_path))
 
             logger.info(f"Rendered resume to {output_path}")
 
@@ -534,7 +543,8 @@ class PDFRenderer:
             output_path = output_dir / filename
 
             # Render to PDF
-            HTML(string=html_content).write_pdf(str(output_path))
+            html = self._get_weasyprint_html()
+            html(string=html_content).write_pdf(str(output_path))
 
             logger.info(f"Rendered cover letter to {output_path}")
 

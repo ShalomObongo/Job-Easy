@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Preflight Fixture (Shadow + Iframe)</title>
+  </head>
+  <body>
+    <h1>Preflight Fixture</h1>
+
+    <div id="shadow-host"></div>
+    <script>
+      const host = document.getElementById("shadow-host");
+      const root = host.attachShadow({ mode: "open" });
+      root.innerHTML = `
+        <label>
+          Shadow Required
+          <textarea aria-label="Shadow Required" required></textarea>
+        </label>
+      `;
+    </script>
+
+    <iframe title="Same-origin iframe" src="./preflight_shadow_iframe_inner.html"></iframe>
+  </body>
+</html>

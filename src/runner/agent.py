@@ -353,6 +353,9 @@ Files available for upload (only use these exact paths):
   - AUTO-SUBMIT: The tool will automatically click the submit button without prompting the human.
   - If the tool returns "submitted", proceed to verify submission (confirmation text/screenshot) and finish with status submitted.
   - If the tool returns "blocked_missing_fields", do NOT submit; fill the missing required fields and only then call confirm_submit again.
+  - If the tool returns "blocked_otp", do NOT submit; an OTP/verification step is blocking progress. Ask the human for the code (use ask_otp_code), enter it, and only then retry.
+    - If the code is rejected (e.g., the page shows "invalid security code" / "code expired"), ask the human for a NEW code and retry once. Do not brute-force.
+  - If the tool returns "blocked_captcha", do NOT submit; bot protection/CAPTCHA is blocking progress. Ask the human to complete the CAPTCHA in the browser, then retry.
   - If the tool returns "confirmed", the click may have failed; click the final submit button yourself."""
     else:
         submit_gate_section = """Submit gate (required):
@@ -363,6 +366,9 @@ Files available for upload (only use these exact paths):
   - The confirm_submit tool will ask the human and (if confirmed) click the submit button for you.
   - If the tool returns "submitted", proceed to verify submission (confirmation text/screenshot) and finish with status submitted.
   - If the tool returns "blocked_missing_fields", do NOT submit; fill the missing required fields and only then call confirm_submit again.
+  - If the tool returns "blocked_otp", do NOT submit; an OTP/verification step is blocking progress. Ask the human for the code (use ask_otp_code), enter it, and only then retry.
+    - If the code is rejected (e.g., the page shows "invalid security code" / "code expired"), ask the human for a NEW code and retry once. Do not brute-force.
+  - If the tool returns "blocked_captcha", do NOT submit; bot protection/CAPTCHA is blocking progress. Ask the human to complete the CAPTCHA in the browser, then retry.
   - If the tool returns "confirmed", the human confirmed but the click failed; you must click the final submit button yourself.
   - If the tool returns anything else ("cancelled"), do not submit and finish with status stopped_before_submit."""
 
@@ -389,21 +395,28 @@ Form filling rules:
 1) For dropdowns/combobox fields, do NOT type with input(). Instead:
    - Use dropdown_options(index) to see available options (if needed), then
    - Use select_dropdown(index, text) with the exact visible option text.
-2) If browser_state shows required-field errors (e.g. "This field is required.", "Resume/CV is required.", or invalid=true on required inputs), you are NOT at the final submit step yet. Fix missing fields/uploads first.
-3) Only upload the cover letter if there is a dedicated "Cover Letter" upload field. Never overwrite the Resume/CV field with the cover letter.
-4) If the cover letter field is text-only (no upload), generate a brief cover letter using the job information and company name from the page.
-5) For radio button and checkbox questions (e.g., salary range, education level), you MUST select an option before proceeding. Never skip required radio/checkbox fields.
+   - If dropdown_options returns no options OR select_dropdown fails but the options are visibly open on screen, use click_visible_option(option_text, browser_session) as a fallback.
+2) Run preflight_check(browser_session) before attempting to submit. If it returns any blockers, do NOT submit; fill those missing/invalid required fields and re-run preflight_check until it returns [].
+   - Note: some fields (especially textareas inside shadow DOM) may not show their current value in browser_state; preflight_check is the source of truth for whether required fields are still missing.
+3) If browser_state shows required-field errors (e.g. "This field is required.", "Resume/CV is required.", or invalid=true on required inputs), you are NOT at the final submit step yet. Fix missing fields/uploads first.
+4) Only upload the cover letter if there is a dedicated "Cover Letter" upload field. Never overwrite the Resume/CV field with the cover letter.
+5) If the cover letter field is text-only (no upload), generate a brief cover letter using the job information and company name from the page.
+6) For radio button and checkbox questions (e.g., salary range, education level), you MUST select an option before proceeding. Never skip required radio/checkbox fields.
 
 Flow handling:
 1) If this is a job posting page, find and click an Apply / Apply Now button.
 2) If this is a direct application form, start filling it.
 3) Handle multi-step flows (Next/Continue buttons, modals, multiple pages).
+   - If a cookie/consent banner blocks interaction, use dismiss_cookie_banner(browser_session) and continue.
 4) Upload the provided resume/cover letter files when asked (only use available_file_paths).
 5) For unknown questions:
    - Non-YOLO mode: use resolve_answer(question, context) to load from the Q&A bank; if missing, it will ask the human and persist for next time.
    - YOLO mode: call resolve_answer(...) to retrieve or generate a best-effort answer (it may return "" when not possible).
-6) If CAPTCHA/2FA appears, stop and ask the user for manual help; do not bypass.
-7) IMPORTANT: Complete ALL required fields before calling confirm_submit. Do not give up or return "blocked" status until you have tried to fill every required field including radio buttons, checkboxes, and dropdowns.
+6) If CAPTCHA/2FA appears:
+   - If it BLOCKS progress (you cannot continue or submit), stop and ask the user for manual help; do not bypass.
+   - If it's NOT blocking (e.g., a reCAPTCHA notice/badge in the footer), continue normally.
+   - If an OTP code is rejected as invalid/expired, ask the human for a new code and retry once; do not brute-force.
+7) IMPORTANT: Complete ALL required fields before calling confirm_submit. Use preflight_check to confirm required fields are complete before attempting submission. Do not give up or return "blocked" status until you have tried to fill every required field including radio buttons, checkboxes, and dropdowns.
 
 {submit_gate_section}
 

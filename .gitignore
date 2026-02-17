@@ -111,3 +111,7 @@ leads.txt
 
 # Manual test files (user-specific)
 test_*_manual.py
+
+artifacts/manual_verification
+
+.emdash.json

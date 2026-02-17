@@ -57,6 +57,19 @@ def _write_json(path: Path, payload: object) -> None:
     )
 
 
+def _extract_first_json_object(raw: str) -> str | None:
+    text = str(raw or "").lstrip()
+    if not text:
+        return None
+
+    decoder = json.JSONDecoder()
+    try:
+        payload, _ = decoder.raw_decode(text)
+    except json.JSONDecodeError:
+        return None
+    return json.dumps(payload)
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser for the CLI."""
     parser = argparse.ArgumentParser(
@@ -729,6 +742,7 @@ def main(args: list[str] | None = None) -> int:
             create_browser,
             get_runner_llm,
         )
+        from src.runner.models import ApplicationRunResult, RunStatus
 
         run_dir = _resolve_run_dir(
             settings,
@@ -741,9 +755,24 @@ def main(args: list[str] | None = None) -> int:
             print("No LLM configured for runner", file=sys.stderr)
             return 1
 
-        available_file_paths = [str(parsed.resume)]
+        def _expand_upload_paths(paths: list[str]) -> list[str]:
+            expanded: list[str] = []
+            seen: set[str] = set()
+            for raw in paths:
+                raw_str = str(raw).strip()
+                if not raw_str:
+                    continue
+                for candidate in (raw_str, str(Path(raw_str).expanduser().resolve())):
+                    if candidate in seen:
+                        continue
+                    seen.add(candidate)
+                    expanded.append(candidate)
+            return expanded
+
+        upload_paths = [str(parsed.resume)]
         if getattr(parsed, "cover_letter", None):
-            available_file_paths.append(str(parsed.cover_letter))
+            upload_paths.append(str(parsed.cover_letter))
+        available_file_paths = _expand_upload_paths(upload_paths)
 
         sensitive_data: dict[str, str | dict[str, str]] = {}
         profile = None
@@ -852,11 +881,35 @@ def main(args: list[str] | None = None) -> int:
             )
 
             history = asyncio.run(agent.run())
-            structured = getattr(history, "structured_output", None)
-            result = structured
+
+            result = None
+            with contextlib.suppress(Exception):
+                result = getattr(history, "structured_output", None)
+
             if result is None:
-                print("Runner did not produce structured output", file=sys.stderr)
-                return 1
+                raw_final: str | None = None
+                with contextlib.suppress(Exception):
+                    raw_final = history.final_result()
+
+                raw_json = _extract_first_json_object(raw_final or "")
+                if raw_json:
+                    with contextlib.suppress(Exception):
+                        result = ApplicationRunResult.model_validate_json(raw_json)
+
+            if result is None:
+                result = ApplicationRunResult(
+                    success=False,
+                    status=RunStatus.FAILED,
+                    errors=["Runner did not produce structured output"],
+                )
+
+            proof_path = run_dir / "proof.png"
+            with contextlib.suppress(Exception):
+                if browser is not None:
+                    asyncio.run(
+                        browser.take_screenshot(path=str(proof_path), full_page=False)
+                    )
+                    result.proof_screenshot_path = str(proof_path)
 
             with open(run_dir / "application_result.json", "w", encoding="utf-8") as f:
                 f.write(result.model_dump_json(indent=2))

@@ -679,3 +679,105 @@ def test_cli_tailor_mode_writes_review_packet_json(monkeypatch, tmp_path) -> Non
 
     assert exit_code == 0
     assert (tmp_path / "review_packet.json").exists()
+
+
+def test_extract_first_json_object_ignores_trailing_commentary() -> None:
+    from src.__main__ import _extract_first_json_object
+
+    raw = '{"success": true, "status": "failed"}\nFinal note from judge'
+    extracted = _extract_first_json_object(raw)
+
+    assert extracted is not None
+    assert json.loads(extracted) == {"success": True, "status": "failed"}
+
+
+def test_extract_first_json_object_returns_none_for_non_json() -> None:
+    from src.__main__ import _extract_first_json_object
+
+    assert _extract_first_json_object("not-json") is None
+
+
+def test_cli_apply_mode_parses_json_with_trailing_text(monkeypatch, tmp_path) -> None:
+    from src.__main__ import main
+
+    monkeypatch.setenv("RUNNER_YOLO_MODE", "false")
+    monkeypatch.setenv("RUNNER_ASSUME_YES", "false")
+    monkeypatch.setenv("RUNNER_AUTO_SUBMIT", "false")
+
+    class _FakeBrowser:
+        async def take_screenshot(self, *, path: str, full_page: bool = False) -> None:
+            _ = full_page
+            Path(path).write_text("png", encoding="utf-8")
+
+        async def close(self) -> None:
+            return None
+
+    class _FakeHistory:
+        structured_output = None
+
+        def final_result(self) -> str:
+            return (
+                '{"success": true, "status": "skipped", "notes": ["done"]}'
+                "\nJudge: extra commentary"
+            )
+
+    class _FakeAgent:
+        async def run(self):
+            return _FakeHistory()
+
+    captured: dict[str, object] = {}
+
+    def _fake_create_application_agent(**kwargs):
+        captured["available_file_paths"] = kwargs.get("available_file_paths")
+        return _FakeAgent()
+
+    monkeypatch.setattr(
+        "src.runner.agent.get_runner_llm",
+        lambda _settings: object(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "src.runner.agent.create_browser",
+        lambda _settings, prohibited_domains=None: _FakeBrowser(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "src.runner.agent.create_application_agent",
+        _fake_create_application_agent,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "src.hitl.tools.create_hitl_tools",
+        lambda auto_submit=False: object(),
+        raising=False,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    resume_path = tmp_path / "resume.pdf"
+    resume_path.write_text("pdf", encoding="utf-8")
+    run_dir = tmp_path / "run"
+
+    exit_code = main(
+        [
+            "apply",
+            "https://example.com/jobs/123",
+            "--resume",
+            "resume.pdf",
+            "--out-run-dir",
+            str(run_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    result_path = run_dir / "application_result.json"
+    assert result_path.exists()
+
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["success"] is True
+    assert payload["status"] == "skipped"
+    assert payload["proof_screenshot_path"] == str(run_dir / "proof.png")
+
+    available_file_paths = captured["available_file_paths"]
+    assert isinstance(available_file_paths, list)
+    assert "resume.pdf" in available_file_paths
+    assert str(resume_path.resolve()) in available_file_paths

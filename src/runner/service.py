@@ -438,15 +438,29 @@ class SingleJobApplicationService:
                 with contextlib.suppress(Exception):
                     record_allowed_domain(visited, allowlist_log_path)
 
+            proof_path = run_dir / "proof.png"
+            with contextlib.suppress(Exception):
+                if browser is not None:
+                    await browser.take_screenshot(path=str(proof_path), full_page=False)
+                    result.proof_screenshot_path = str(proof_path)
+
             with contextlib.suppress(Exception):
                 result.save_json(run_dir / "application_result.json")
 
             return result
         except Exception as e:
             logger.exception("Runner agent failed: %s", e)
-            return ApplicationRunResult(
+            result = ApplicationRunResult(
                 success=False, status=RunStatus.FAILED, errors=[str(e)]
             )
+            proof_path = run_dir / "proof.png"
+            with contextlib.suppress(Exception):
+                if browser is not None:
+                    await browser.take_screenshot(path=str(proof_path), full_page=False)
+                    result.proof_screenshot_path = str(proof_path)
+            with contextlib.suppress(Exception):
+                result.save_json(run_dir / "application_result.json")
+            return result
         finally:
             if browser is not None:
                 with contextlib.suppress(Exception):

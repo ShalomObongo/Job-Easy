@@ -6,10 +6,16 @@ This module provides:
 - Browser Use custom tools via `Tools().action(...)` for agents
 """
 
+from __future__ import annotations
+
 import asyncio
+import json
 import logging
+from pathlib import Path
+from typing import Literal
 
 from browser_use import BrowserSession, Tools
+from browser_use.agent.views import ActionResult
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +30,68 @@ _SUBMIT_SUCCESS_PHRASES = (
     "your application has been submitted",
     "application submitted",
     "application received",
+)
+
+_BOT_PROTECTION_BLOCK_PHRASES = (
+    # Ashby / reCAPTCHA spam blocks
+    "flagged as possible spam",
+    "we couldn't submit your application",
+    # Common captcha / bot-protection language
+    "please complete the captcha",
+    "complete the captcha",
+    "verify you are human",
+    "robot check",
+    "unusual traffic",
+    "access denied",
+    "attention required",
+)
+
+_OTP_BLOCK_PHRASES = (
+    "security code",
+    "verification code",
+    "invalid security code",
+    "enter the code",
+    "one-time password",
+    "two-factor",
+    "2fa",
+    "otp",
+)
+
+# Placeholder values that often indicate an unselected required combobox/select.
+_PLACEHOLDER_VALUES = (
+    "select...",
+    "select",
+    "choose...",
+    "choose",
+    "start typing...",
+    "start typing",
+    "search...",
+    "search",
+)
+_INTENTIONAL_BLANK_ATTRIBUTE = "data-job-easy-intentionally-blank"
+
+_UPLOAD_RESUME_HINTS = ("resume", "cv", "curriculum vitae")
+_UPLOAD_COVER_HINTS = ("cover", "cover letter")
+
+_COOKIE_BANNER_HINTS = ("cookie", "cookies", "consent", "gdpr", "privacy")
+_COOKIE_ACCEPT_TEXTS = (
+    "accept all",
+    "accept",
+    "agree",
+    "i agree",
+    "allow all",
+    "ok",
+    "okay",
+    "got it",
+)
+_COOKIE_REJECT_TEXTS = (
+    "reject",
+    "decline",
+    "manage",
+    "preferences",
+    "settings",
+    "learn more",
+    "more info",
 )
 
 
@@ -85,6 +153,195 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
     """
     tools = Tools()
 
+    def _normalize_whitespace(value: str) -> str:
+        return " ".join(str(value or "").strip().split()).lower()
+
+    def _digits_only(value: str) -> str:
+        return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+    def _values_match(*, expected: str, actual: str) -> bool:
+        expected_norm = _normalize_whitespace(expected)
+        actual_norm = _normalize_whitespace(actual)
+        if expected_norm == actual_norm:
+            return True
+
+        expected_digits = _digits_only(expected)
+        actual_digits = _digits_only(actual)
+        return bool(expected_digits) and expected_digits == actual_digits
+
+    def _detect_sensitive_key_name(
+        text: str, sensitive_data: dict[str, str | dict[str, str]] | None
+    ) -> str | None:
+        if not sensitive_data or not text:
+            return None
+
+        for domain_or_key, content in sensitive_data.items():
+            if isinstance(content, dict):
+                for key, value in content.items():
+                    if value and value == text:
+                        return key
+                continue
+
+            if content and content == text:
+                return domain_or_key
+
+        return None
+
+    async def _build_element_for_node(browser_session: BrowserSession, node) -> object:
+        from browser_use.actor.element import Element
+
+        page = await browser_session.must_get_current_page()
+        session_id = (
+            str(getattr(node, "session_id", None) or "") or await page.session_id
+        )
+        return Element(browser_session, node.backend_node_id, session_id=session_id)
+
+    def _infer_upload_purpose(
+        file_path: str,
+    ) -> Literal["resume", "cover_letter", "unknown"]:
+        name = Path(str(file_path)).name.lower()
+        if any(hint in name for hint in _UPLOAD_COVER_HINTS):
+            return "cover_letter"
+        if any(hint in name for hint in _UPLOAD_RESUME_HINTS):
+            return "resume"
+        return "unknown"
+
+    def _node_label_hint(node) -> str:
+        parts: list[str] = []
+        ax = getattr(node, "ax_node", None)
+        if ax is not None:
+            name = getattr(ax, "name", None)
+            description = getattr(ax, "description", None)
+            if name:
+                parts.append(str(name))
+            if description:
+                parts.append(str(description))
+
+        attrs = getattr(node, "attributes", None) or {}
+        for key in ("aria-label", "name", "id", "data-testid", "data-test", "accept"):
+            value = attrs.get(key)
+            if value:
+                parts.append(str(value))
+
+        return " ".join(parts).strip().lower()
+
+    def _score_upload_candidate(
+        *, purpose: Literal["resume", "cover_letter", "unknown"], label_hint: str
+    ) -> int:
+        if purpose == "unknown":
+            return 0
+
+        score = 0
+        if purpose == "resume":
+            if any(token in label_hint for token in _UPLOAD_RESUME_HINTS):
+                score += 10
+            if any(token in label_hint for token in _UPLOAD_COVER_HINTS):
+                score -= 10
+        if purpose == "cover_letter":
+            if any(token in label_hint for token in _UPLOAD_COVER_HINTS):
+                score += 10
+            if any(token in label_hint for token in _UPLOAD_RESUME_HINTS):
+                score -= 10
+        return score
+
+    def _iter_descendants(root_node, *, max_nodes: int = 1500):
+        queue = [root_node]
+        seen: set[int] = set()
+        count = 0
+        while queue and count < max_nodes:
+            node = queue.pop(0)
+            node_id = getattr(node, "backend_node_id", None)
+            if isinstance(node_id, int):
+                if node_id in seen:
+                    continue
+                seen.add(node_id)
+
+            yield node
+            count += 1
+
+            for child in getattr(node, "children_nodes", None) or []:
+                queue.append(child)
+            for shadow in getattr(node, "shadow_roots", None) or []:
+                queue.append(shadow)
+            content_doc = getattr(node, "content_document", None)
+            if content_doc is not None:
+                queue.append(content_doc)
+
+    async def _read_typed_value(element) -> str:
+        raw = await element.evaluate(
+            """
+() => {
+  const el = this;
+  const tag = (el && el.tagName) ? el.tagName.toLowerCase() : '';
+  const isEditable = Boolean(el && el.isContentEditable);
+  if (isEditable) return (el.textContent || '').trim();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return String(el.value || '');
+  return String(el.innerText || el.textContent || '');
+}
+"""
+        )
+        return str(raw or "")
+
+    async def _set_value_with_events(element, value: str) -> str:
+        raw = await element.evaluate(
+            """
+(val) => {
+  const el = this;
+  const tag = (el && el.tagName) ? el.tagName.toLowerCase() : '';
+  const isEditable = Boolean(el && el.isContentEditable);
+
+  if (isEditable) {
+    el.focus?.();
+    el.textContent = String(val || '');
+    el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+    el.blur?.();
+    return (el.textContent || '').trim();
+  }
+
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    const proto = Object.getPrototypeOf(el);
+    const desc = proto ? Object.getOwnPropertyDescriptor(proto, 'value') : null;
+    if (desc && typeof desc.set === 'function') {
+      desc.set.call(el, String(val || ''));
+    } else {
+      el.value = String(val || '');
+    }
+
+    el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+    el.blur?.();
+    return String(el.value || '');
+  }
+
+  return '';
+}
+""",
+            value,
+        )
+        return str(raw or "")
+
+    async def _verify_file_attached(element) -> tuple[int, list[str]]:
+        raw = await element.evaluate(
+            """
+() => {
+  const el = this;
+  if (!el || !el.files) return JSON.stringify({ count: 0, names: [] });
+  const names = Array.from(el.files).map((f) => f && f.name ? String(f.name) : '').filter(Boolean);
+  return JSON.stringify({ count: el.files.length || 0, names });
+}
+"""
+        )
+        try:
+            decoded = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            decoded = {}
+
+        count = int(decoded.get("count") or 0) if isinstance(decoded, dict) else 0
+        names_raw = decoded.get("names") if isinstance(decoded, dict) else None
+        names = [str(item) for item in names_raw] if isinstance(names_raw, list) else []
+        return count, names
+
     @tools.action(description="Ask the human a yes/no question. Returns 'yes' or 'no'.")
     def ask_yes_no(question: str) -> str:
         return "yes" if prompt_yes_no(question) else "no"
@@ -92,6 +349,612 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
     @tools.action(description="Ask the human for free text input.")
     def ask_free_text(question: str) -> str:
         return prompt_free_text(question)
+
+    @tools.action(
+        description=(
+            "Mark a field as intentionally blank by element index. "
+            "Preflight ignores this marker only for non-required fields."
+        )
+    )
+    async def mark_field_intentionally_blank(
+        index: int, browser_session
+    ) -> ActionResult:
+        node = await browser_session.get_dom_element_by_index(index)
+        if node is None:
+            msg = (
+                f"Element index {index} not available - page may have changed. "
+                "Try refreshing browser state."
+            )
+            logger.warning(msg)
+            return ActionResult(extracted_content=msg)
+
+        try:
+            element = await _build_element_for_node(browser_session, node)
+            await element.evaluate(
+                """
+(attr) => {
+  this.setAttribute(attr, 'true');
+  return this.getAttribute(attr);
+}
+""",
+                _INTENTIONAL_BLANK_ATTRIBUTE,
+            )
+        except Exception as exc:
+            return ActionResult(
+                error=f"Failed to mark field as intentionally blank: {exc}"
+            )
+
+        msg = f"Marked field index {index} as intentionally blank"
+        return ActionResult(extracted_content=msg, long_term_memory=msg)
+
+    @tools.action(
+        description=(
+            "Run a non-submitting preflight check for required/invalid fields. "
+            "Returns a JSON list of blockers (missing required fields and invalid fields). "
+            "Use this to verify completeness before attempting to submit."
+        )
+    )
+    async def preflight_check(browser_session) -> str:
+        blockers = await preflight_find_blockers(browser_session)
+        return json.dumps(blockers)
+
+    @tools.action(
+        description=(
+            "Input text into an element by index with verification and retries. "
+            "Uses focus+clear+type and then reads the field value to confirm it stuck."
+        )
+    )
+    async def input(
+        index: int,
+        text: str,
+        browser_session,
+        clear: bool = True,
+        has_sensitive_data=False,
+        sensitive_data: dict[str, str | dict[str, str]] | None = None,
+    ) -> ActionResult:
+        node = await browser_session.get_dom_element_by_index(index)
+        if node is None:
+            msg = (
+                f"Element index {index} not available - page may have changed. "
+                "Try refreshing browser state."
+            )
+            logger.warning(msg)
+            return ActionResult(extracted_content=msg)
+
+        element = await _build_element_for_node(browser_session, node)
+
+        meta_raw = await element.evaluate(
+            """
+() => JSON.stringify({
+  tag: (this && this.tagName) ? this.tagName.toLowerCase() : '',
+  type: (this && this.getAttribute) ? (this.getAttribute('type') || '') : '',
+  isContentEditable: Boolean(this && this.isContentEditable),
+})
+"""
+        )
+        try:
+            meta = json.loads(meta_raw) if meta_raw else {}
+        except json.JSONDecodeError:
+            meta = {}
+
+        tag = str(meta.get("tag") or "")
+        input_type = str(meta.get("type") or "")
+        is_content_editable = bool(meta.get("isContentEditable"))
+
+        if input_type.lower() == "file":
+            return ActionResult(
+                error="Cannot type into file inputs. Use upload_file(index, path) instead."
+            )
+
+        if tag not in {"input", "textarea"} and not is_content_editable:
+            return ActionResult(
+                error=(
+                    f"Element index {index} is not a text input/textarea (tag={tag}). "
+                    "Click it first or choose a real input field."
+                )
+            )
+
+        expected_text = str(text or "")
+
+        last_error: str | None = None
+        for attempt in range(1, 4):
+            try:
+                await element.fill(expected_text, clear=clear)
+            except Exception as exc:
+                last_error = str(exc)
+
+            actual = await _read_typed_value(element)
+            if _values_match(expected=expected_text, actual=actual):
+                sensitive_key_name = (
+                    _detect_sensitive_key_name(expected_text, sensitive_data)
+                    if has_sensitive_data
+                    else None
+                )
+                if has_sensitive_data:
+                    msg = (
+                        f"Typed {sensitive_key_name}"
+                        if sensitive_key_name
+                        else "Typed sensitive data"
+                    )
+                else:
+                    msg = f"Typed '{expected_text}'"
+                return ActionResult(
+                    extracted_content=msg,
+                    long_term_memory=msg,
+                )
+
+            # Fallback: set value and dispatch events (reactive frameworks).
+            try:
+                actual = await _set_value_with_events(element, expected_text)
+            except Exception as exc:
+                last_error = str(exc)
+                actual = ""
+
+            if _values_match(expected=expected_text, actual=actual):
+                sensitive_key_name = (
+                    _detect_sensitive_key_name(expected_text, sensitive_data)
+                    if has_sensitive_data
+                    else None
+                )
+                if has_sensitive_data:
+                    msg = (
+                        f"Typed {sensitive_key_name}"
+                        if sensitive_key_name
+                        else "Typed sensitive data"
+                    )
+                else:
+                    msg = f"Typed '{expected_text}'"
+                return ActionResult(
+                    extracted_content=msg,
+                    long_term_memory=msg,
+                )
+
+            logger.warning(
+                "Input verify failed (attempt %s/3): expected=%r actual=%r",
+                attempt,
+                expected_text,
+                actual,
+            )
+            await asyncio.sleep(0.05)
+
+        error = f"Input did not persist after retries for index {index}." + (
+            f" Last error: {last_error}" if last_error else ""
+        )
+        return ActionResult(error=error)
+
+    @tools.action(
+        description=(
+            "Select a dropdown option by exact visible text (with verification + fallback). "
+            "If the built-in selection fails but options are visible, uses click_visible_option."
+        )
+    )
+    async def select_dropdown(
+        index: int,
+        text: str,
+        browser_session,
+    ) -> ActionResult:
+        node = await browser_session.get_dom_element_by_index(index)
+        if node is None:
+            msg = (
+                f"Element index {index} not available - page may have changed. "
+                "Try refreshing browser state."
+            )
+            logger.warning(msg)
+            return ActionResult(extracted_content=msg)
+
+        from browser_use.browser.events import SelectDropdownOptionEvent
+
+        selection_data: dict[str, str] | None = None
+        try:
+            event = browser_session.event_bus.dispatch(
+                SelectDropdownOptionEvent(node=node, text=text)
+            )
+            selection_data = await event.event_result()
+        except Exception as exc:
+            logger.warning("select_dropdown event failed: %s", exc)
+
+        success = bool(selection_data and selection_data.get("success") == "true")
+        if not success:
+            try:
+                element = await _build_element_for_node(browser_session, node)
+                await element.click()
+                await asyncio.sleep(0.05)
+            except Exception:
+                pass
+
+            fallback_raw = await click_visible_option(
+                option_text=text,
+                browser_session=browser_session,
+                exact_match=True,
+            )
+            try:
+                fallback = json.loads(fallback_raw) if fallback_raw else {}
+            except json.JSONDecodeError:
+                fallback = {}
+
+            if isinstance(fallback, dict) and fallback.get("status") == "clicked":
+                msg = f"Selected option: {text}"
+                return ActionResult(
+                    extracted_content=msg,
+                    long_term_memory=f"Selected dropdown option '{text}' at index {index}",
+                )
+
+            error = (
+                selection_data.get("error") if selection_data else None
+            ) or f"Failed to select option: {text}"
+            return ActionResult(error=error)
+
+        # Best-effort verification for native selects / input-based comboboxes.
+        try:
+            element = await _build_element_for_node(browser_session, node)
+            raw = await element.evaluate(
+                """
+() => JSON.stringify({
+  tag: (this && this.tagName) ? this.tagName.toLowerCase() : '',
+  value: (this && 'value' in this) ? String(this.value || '') : '',
+  text: String(this.innerText || this.textContent || ''),
+  selectedText: (this && this.tagName && this.tagName.toLowerCase() === 'select' && this.selectedOptions && this.selectedOptions[0])
+    ? String(this.selectedOptions[0].textContent || '')
+    : '',
+})
+"""
+            )
+            decoded = json.loads(raw) if raw else {}
+            candidates = [
+                str(decoded.get("value") or ""),
+                str(decoded.get("selectedText") or ""),
+                str(decoded.get("text") or ""),
+            ]
+            if any(
+                _values_match(expected=text, actual=value)
+                for value in candidates
+                if value
+            ):
+                msg = selection_data.get("message") if selection_data else None
+                msg = msg or f"Selected option: {text}"
+                return ActionResult(
+                    extracted_content=msg,
+                    include_in_memory=True,
+                    long_term_memory=f"Selected dropdown option '{text}' at index {index}",
+                )
+        except Exception:
+            pass
+
+        msg = selection_data.get("message") if selection_data else None
+        msg = msg or f"Selected option: {text}"
+        return ActionResult(
+            extracted_content=msg,
+            include_in_memory=True,
+            long_term_memory=f"Selected dropdown option '{text}' at index {index}",
+        )
+
+    @tools.action(
+        description=(
+            "Upload a file to a file input by index (robust). If the provided element is "
+            "a button/label that controls a hidden file input, it will try to locate the "
+            "associated <input type=file> in the same DOM subtree and upload there. "
+            "Verifies that a file is attached afterward."
+        )
+    )
+    async def upload_file(
+        index: int,
+        path: str,
+        browser_session,
+        available_file_paths,
+    ) -> ActionResult:
+        # Enforce available_file_paths for local runs.
+        if path not in set(available_file_paths or []) and getattr(
+            browser_session, "is_local", True
+        ):
+            return ActionResult(
+                error=(
+                    "File path is not allowed. Use only paths listed in "
+                    "available_file_paths."
+                )
+            )
+
+        node = await browser_session.get_dom_element_by_index(index)
+        if node is None:
+            msg = (
+                f"Element index {index} not available - page may have changed. "
+                "Try refreshing browser state."
+            )
+            logger.warning(msg)
+            return ActionResult(extracted_content=msg)
+
+        purpose = _infer_upload_purpose(path)
+
+        selector_map = await browser_session.get_selector_map()
+        candidates: list[object] = []
+
+        def add_if_file_input(candidate) -> None:
+            try:
+                if browser_session.is_file_input(candidate):
+                    candidates.append(candidate)
+            except Exception:
+                return
+
+        add_if_file_input(node)
+        if not candidates:
+            for candidate in _iter_descendants(node):
+                add_if_file_input(candidate)
+
+        ancestor = getattr(node, "parent_node", None)
+        for _ in range(4):
+            if candidates:
+                break
+            if ancestor is None:
+                break
+            for candidate in _iter_descendants(ancestor):
+                add_if_file_input(candidate)
+            ancestor = getattr(ancestor, "parent_node", None)
+
+        # As a last resort, scan the selector map for file inputs in the current DOM.
+        if not candidates and selector_map:
+            for candidate in selector_map.values():
+                add_if_file_input(candidate)
+
+        if not candidates:
+            return ActionResult(error="No file input found to upload into.")
+
+        scored: list[tuple[int, object]] = []
+        for candidate in candidates:
+            label_hint = _node_label_hint(candidate)
+            score = _score_upload_candidate(purpose=purpose, label_hint=label_hint)
+            scored.append((score, candidate))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        best_score, best_node = scored[0]
+
+        # Safety: never overwrite Resume/CV with cover letter.
+        if purpose == "cover_letter" and best_score <= 0:
+            return ActionResult(
+                error=(
+                    "Refusing to upload cover letter without a clear dedicated Cover Letter field. "
+                    "Only upload the cover letter if there is a dedicated Cover Letter field."
+                )
+            )
+
+        from browser_use.browser.events import UploadFileEvent
+
+        try:
+            event = browser_session.event_bus.dispatch(
+                UploadFileEvent(node=best_node, file_path=path)
+            )
+            await event
+            await event.event_result(raise_if_any=True, raise_if_none=False)
+        except Exception as exc:
+            return ActionResult(error=f"Upload failed: {exc}")
+
+        try:
+            element = await _build_element_for_node(browser_session, best_node)
+            count, names = await _verify_file_attached(element)
+            if count <= 0:
+                return ActionResult(
+                    error="Upload did not attach a file (files.length=0)."
+                )
+            msg = f"Uploaded file to element (files={count})"
+            if names:
+                msg = f"Uploaded file: {names[0]}"
+            return ActionResult(extracted_content=msg, long_term_memory=msg)
+        except Exception:
+            msg = "Uploaded file"
+            return ActionResult(extracted_content=msg, long_term_memory=msg)
+
+    @tools.action(
+        description=(
+            "Best-effort cookie banner dismissal. Clicks common 'Accept/Agree/Got it' "
+            "buttons inside cookie/consent banners across open shadow roots and same-origin iframes."
+        )
+    )
+    async def dismiss_cookie_banner(browser_session) -> str:
+        try:
+            page = await browser_session.must_get_current_page()
+        except Exception:
+            return json.dumps({"status": "error", "error": "no_page"})
+
+        script = f"""
+() => {{
+  const BANNER_HINTS = {list(_COOKIE_BANNER_HINTS)!r}.map((t) => String(t).toLowerCase());
+  const ACCEPT = {list(_COOKIE_ACCEPT_TEXTS)!r}.map((t) => String(t).toLowerCase());
+  const REJECT = {list(_COOKIE_REJECT_TEXTS)!r}.map((t) => String(t).toLowerCase());
+
+  const normalize = (value) => String(value || '').trim().replace(/\\s+/g, ' ').toLowerCase();
+
+  const isVisible = (el) => {{
+    if (!el || el.nodeType !== 1) return false;
+    if (el.closest('[aria-hidden=\"true\"]')) return false;
+    const style = (el.ownerDocument && el.ownerDocument.defaultView)
+      ? el.ownerDocument.defaultView.getComputedStyle(el)
+      : window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }};
+
+  const inCookieContext = (el) => {{
+    const container = el.closest('[id*=\"cookie\"], [class*=\"cookie\"], [id*=\"consent\"], [class*=\"consent\"], [id*=\"gdpr\"], [class*=\"gdpr\"], [id*=\"privacy\"], [class*=\"privacy\"]');
+    if (!container) return false;
+    const text = normalize(container.innerText || container.textContent || '');
+    return BANNER_HINTS.some((h) => text.includes(h));
+  }};
+
+  const matchesAcceptText = (text) => {{
+    const t = normalize(text);
+    if (!t) return false;
+    if (REJECT.some((r) => t.includes(r))) return false;
+    return ACCEPT.some((a) => t === a || t.includes(a));
+  }};
+
+  const findCandidates = (root) => {{
+    let buttons = [];
+    try {{
+      buttons = Array.from(root.querySelectorAll('button, input[type=\"button\"], input[type=\"submit\"], a[role=\"button\"]'));
+    }} catch (_) {{}}
+
+    return buttons.filter((el) => {{
+      if (!isVisible(el)) return false;
+      if (!inCookieContext(el)) return false;
+      const label = el.innerText || el.textContent || el.getAttribute('aria-label') || el.value || '';
+      return matchesAcceptText(label);
+    }});
+  }};
+
+  const queue = [document];
+  const seen = new Set();
+  while (queue.length) {{
+    const root = queue.pop();
+    if (!root || seen.has(root)) continue;
+    seen.add(root);
+
+    const candidates = findCandidates(root);
+    if (candidates.length) {{
+      const chosen = candidates[0];
+      try {{
+        chosen.scrollIntoView({{ block: 'center', inline: 'nearest' }});
+      }} catch (_) {{}}
+      const label = String(chosen.innerText || chosen.textContent || chosen.getAttribute('aria-label') || chosen.value || '').trim();
+      try {{
+        chosen.click();
+        return JSON.stringify({{ status: 'clicked', label }});
+      }} catch (e) {{
+        return JSON.stringify({{ status: 'error', error: String(e || 'click_failed'), label }});
+      }}
+    }}
+
+    let elements = [];
+    try {{
+      elements = root.querySelectorAll ? Array.from(root.querySelectorAll('*')) : [];
+    }} catch (_) {{}}
+
+    for (const el of elements) {{
+      try {{
+        if (el.shadowRoot) queue.push(el.shadowRoot);
+      }} catch (_) {{}}
+
+      if (el.tagName === 'IFRAME') {{
+        try {{
+          const doc = el.contentDocument;
+          if (doc) queue.push(doc);
+        }} catch (_) {{}}
+      }}
+    }}
+  }}
+
+  return JSON.stringify({{ status: 'not_found' }});
+}}
+"""
+
+        try:
+            return await page.evaluate(script)
+        except Exception as exc:
+            return json.dumps({"status": "error", "error": str(exc)})
+
+    @tools.action(
+        description=(
+            "Fallback dropdown helper: click a visible option by its text. "
+            "Searches common listbox patterns (role=option, <option>) across open shadow roots "
+            "and same-origin iframes. Returns JSON with status=clicked|not_found|error."
+        )
+    )
+    async def click_visible_option(
+        option_text: str,
+        browser_session,
+        exact_match: bool = True,
+    ) -> str:
+        try:
+            page = await browser_session.must_get_current_page()
+        except Exception:
+            return json.dumps({"status": "error", "error": "no_page"})
+
+        script = """
+(text, exact) => {
+  const needle = String(text || '').trim();
+  if (!needle) return JSON.stringify({ status: 'error', error: 'empty_text' });
+
+  const normalize = (value) =>
+    String(value || '').trim().replace(/\\s+/g, ' ').toLowerCase();
+  const target = normalize(needle);
+
+  const isVisible = (el) => {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.closest('[aria-hidden=\"true\"]')) return false;
+    const style = (el.ownerDocument && el.ownerDocument.defaultView)
+      ? el.ownerDocument.defaultView.getComputedStyle(el)
+      : window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+
+  const getText = (el) =>
+    normalize(el.innerText || el.textContent || el.value || '');
+
+  const matches = [];
+  const queue = [document];
+  const seen = new Set();
+
+  while (queue.length) {
+    const root = queue.pop();
+    if (!root || seen.has(root)) continue;
+    seen.add(root);
+
+    let options = [];
+    try {
+      options = Array.from(root.querySelectorAll('[role=\"option\"], option'));
+    } catch (_) {}
+
+    for (const el of options) {
+      if (!isVisible(el)) continue;
+      const value = getText(el);
+      if (!value) continue;
+      const ok = exact ? value === target : value.includes(target);
+      if (ok) matches.push(el);
+    }
+
+    let elements = [];
+    try {
+      elements = root.querySelectorAll ? Array.from(root.querySelectorAll('*')) : [];
+    } catch (_) {}
+
+    for (const el of elements) {
+      try {
+        if (el.shadowRoot) queue.push(el.shadowRoot);
+      } catch (_) {}
+
+      if (el.tagName === 'IFRAME') {
+        try {
+          const doc = el.contentDocument;
+          if (doc) queue.push(doc);
+        } catch (_) {}
+      }
+    }
+  }
+
+  if (!matches.length) {
+    return JSON.stringify({ status: 'not_found', needle });
+  }
+
+  const chosen = matches[0];
+  try {
+    chosen.scrollIntoView({ block: 'center', inline: 'nearest' });
+  } catch (_) {}
+
+  try {
+    chosen.click();
+  } catch (e) {
+    return JSON.stringify({ status: 'error', error: String(e || 'click_failed') });
+  }
+
+  const chosenText = chosen.innerText || chosen.textContent || chosen.value || '';
+  return JSON.stringify({ status: 'clicked', count: matches.length, chosen: String(chosenText || '').trim() });
+}
+"""
+
+        try:
+            return await page.evaluate(script, option_text, exact_match)
+        except Exception as exc:
+            return json.dumps({"status": "error", "error": str(exc)})
 
     confirm_submit_description = (
         "Before final submit, require the human to type YES/yes to confirm; "
@@ -106,7 +969,7 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
     @tools.action(description=confirm_submit_description)
     async def confirm_submit(
         prompt: str,
-        browser_session: BrowserSession,
+        browser_session,
         submit_button_index: int | None = None,
     ) -> str:
         """Ask for confirmation and, if confirmed, click the final submit button.
@@ -116,10 +979,20 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
             - "confirmed": user confirmed but we could not click automatically
             - "cancelled": user did not confirm
             - "blocked_missing_fields": form has required field errors
+            - "blocked_otp": an OTP/verification step is blocking submission
+            - "blocked_captcha": bot protection/CAPTCHA is blocking submission
         """
-        # If the form is not actually ready, do not submit yet.
-        if await _has_required_field_errors(browser_session):
+        # Preflight: If the form is not actually ready, do not submit yet.
+        missing = await preflight_find_blockers(browser_session)
+        if missing:
+            logger.info("Preflight blocked submit: %s", ", ".join(missing[:8]))
             return "blocked_missing_fields"
+
+        # If the page is already blocked by OTP/CAPTCHA, don't prompt/click yet.
+        if await _has_bot_protection_block(browser_session):
+            return "blocked_captcha"
+        if await _has_otp_block(browser_session):
+            return "blocked_otp"
 
         if auto_submit:
             logger.warning(
@@ -140,6 +1013,10 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
         # After clicking submit, best-effort verify if submission succeeded.
         if await _has_submit_success_text(browser_session):
             return "submitted"
+        if await _has_bot_protection_block(browser_session):
+            return "blocked_captcha"
+        if await _has_otp_block(browser_session):
+            return "blocked_otp"
         if await _has_required_field_errors(browser_session):
             return "blocked_missing_fields"
         return "confirmed"
@@ -276,6 +1153,237 @@ async def _get_page_text(browser_session: BrowserSession) -> str:
 async def _has_required_field_errors(browser_session: BrowserSession) -> bool:
     text = (await _get_page_text(browser_session)).lower()
     return any(phrase in text for phrase in _REQUIRED_ERROR_PHRASES)
+
+
+async def _has_bot_protection_block(browser_session: BrowserSession) -> bool:
+    text = (await _get_page_text(browser_session)).lower()
+    # Avoid false positives from pages that merely mention reCAPTCHA in a footer.
+    if "recaptcha" in text and "protected by recaptcha" in text:
+        # Only treat it as blocking if there's an explicit failure indicator.
+        return any(phrase in text for phrase in _BOT_PROTECTION_BLOCK_PHRASES)
+    return any(phrase in text for phrase in _BOT_PROTECTION_BLOCK_PHRASES)
+
+
+async def _has_otp_block(browser_session: BrowserSession) -> bool:
+    text = (await _get_page_text(browser_session)).lower()
+    return any(phrase in text for phrase in _OTP_BLOCK_PHRASES)
+
+
+async def preflight_find_blockers(browser_session: BrowserSession) -> list[str]:
+    """Find high-confidence blockers without submitting the form.
+
+    Returns a list of short labels describing what appears to be missing/invalid.
+
+    Important:
+    - Only blocks on required or explicitly invalid fields.
+    - Does not block on intentionally empty optional fields.
+    """
+    try:
+        page = await browser_session.must_get_current_page()
+    except Exception:
+        return []
+
+    script = f"""
+() => {{
+  const PLACEHOLDERS = new Set({list(_PLACEHOLDER_VALUES)!r});
+  const INTENTIONAL_BLANK_ATTR = {_INTENTIONAL_BLANK_ATTRIBUTE!r};
+
+  const normalize = (value) => String(value || '').trim().toLowerCase();
+
+  const isVisible = (el) => {{
+    if (!el || el.nodeType !== 1) return false;
+    if (el.closest('[aria-hidden=\"true\"]')) return false;
+    const style = (el.ownerDocument && el.ownerDocument.defaultView)
+      ? el.ownerDocument.defaultView.getComputedStyle(el)
+      : window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    const rect = el.getBoundingClientRect();
+    return (rect.width > 0 && rect.height > 0);
+  }};
+
+  const isRequired = (el) => {{
+    if (!el) return false;
+    if (el.disabled) return false;
+    if (el.getAttribute && el.getAttribute('aria-required') === 'true') return true;
+    return Boolean(el.required);
+  }};
+
+  const isIntentionallyBlank = (el) => {{
+    if (!el || !el.getAttribute) return false;
+    return String(el.getAttribute(INTENTIONAL_BLANK_ATTR) || '').toLowerCase() === 'true';
+  }};
+
+  const labelFor = (el) => {{
+    const aria = el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('name'));
+    if (aria) return String(aria).trim();
+    const doc = el.ownerDocument || document;
+    if (el.id) {{
+      const lbl = doc.querySelector(`label[for=\"${{CSS.escape(el.id)}}\"]`);
+      if (lbl && lbl.innerText) return lbl.innerText.trim();
+    }}
+    const wrapperLabel = el.closest('label');
+    if (wrapperLabel && wrapperLabel.innerText) return wrapperLabel.innerText.trim();
+    return el.id ? `#${{el.id}}` : el.tagName.toLowerCase();
+  }};
+
+  const isPlaceholderValue = (value) => {{
+    const norm = normalize(value);
+    return norm === '' || PLACEHOLDERS.has(norm);
+  }};
+
+  const addUnique = (set, item) => {{
+    const value = String(item || '').trim();
+    if (value) set.add(value);
+  }};
+
+  const collectFromRoot = (root, out) => {{
+    if (!root || !root.querySelectorAll) return;
+
+    const inputs = Array.from(root.querySelectorAll('input, textarea, select'));
+
+    // Radios: group by name when required.
+    const requiredRadioNames = new Set();
+    for (const el of inputs) {{
+      const tag = String(el.tagName || '').toLowerCase();
+      if (tag !== 'input') continue;
+      const type = String(el.type || el.getAttribute('type') || '').toLowerCase();
+      if (type !== 'radio') continue;
+      if (!isVisible(el)) continue;
+      if (!isRequired(el)) continue;
+      if (el.name) requiredRadioNames.add(el.name);
+    }}
+    for (const name of requiredRadioNames) {{
+      const group = Array.from(root.querySelectorAll(`input[type=\"radio\"][name=\"${{CSS.escape(name)}}\"]`));
+      const anyChecked = group.some((r) => Boolean(r.checked));
+      if (!anyChecked) addUnique(out.missing, `radio:${{name}}`);
+    }}
+
+    for (const el of inputs) {{
+      if (!isVisible(el)) continue;
+      if (isIntentionallyBlank(el) && !isRequired(el)) continue;
+      const tag = String(el.tagName || '').toLowerCase();
+
+      if (tag === 'input') {{
+        const type = String(el.type || el.getAttribute('type') || '').toLowerCase();
+        if (type === 'hidden') continue;
+        if (type === 'radio') continue;
+
+        if (type === 'checkbox') {{
+          if (isRequired(el) && !el.checked) addUnique(out.missing, labelFor(el));
+          continue;
+        }}
+
+        if (type === 'file') {{
+          if (isRequired(el) && (!el.files || el.files.length === 0)) {{
+            addUnique(out.missing, labelFor(el));
+          }}
+          continue;
+        }}
+
+        const required = isRequired(el);
+        const value = String(el.value || '');
+        if (required && isPlaceholderValue(value)) addUnique(out.missing, labelFor(el));
+
+        const ariaInvalid = el.getAttribute('aria-invalid') === 'true';
+        const invalid = ariaInvalid || (typeof el.checkValidity === 'function' && !el.checkValidity());
+        if (invalid && (required || String(value || '').trim() !== '')) addUnique(out.invalid, labelFor(el));
+        continue;
+      }}
+
+      if (tag === 'textarea') {{
+        const required = isRequired(el);
+        const value = String(el.value || '');
+        if (required && isPlaceholderValue(value)) addUnique(out.missing, labelFor(el));
+
+        const ariaInvalid = el.getAttribute('aria-invalid') === 'true';
+        const invalid = ariaInvalid || (typeof el.checkValidity === 'function' && !el.checkValidity());
+        if (invalid && (required || String(value || '').trim() !== '')) addUnique(out.invalid, labelFor(el));
+        continue;
+      }}
+
+      if (tag === 'select') {{
+        const required = isRequired(el);
+        const option = el.selectedOptions && el.selectedOptions[0];
+        const text = option ? option.textContent : '';
+        const value = String(el.value || '');
+        const missingValue = isPlaceholderValue(value) || isPlaceholderValue(text);
+        if (required && missingValue) addUnique(out.missing, labelFor(el));
+
+        const ariaInvalid = el.getAttribute('aria-invalid') === 'true';
+        const invalid = ariaInvalid || (typeof el.checkValidity === 'function' && !el.checkValidity());
+        if (invalid && (required || String(value || '').trim() !== '')) addUnique(out.invalid, labelFor(el));
+      }}
+    }}
+  }};
+
+  const queue = [document];
+  const seen = new Set();
+  const out = {{ missing: new Set(), invalid: new Set() }};
+
+  while (queue.length) {{
+    const root = queue.pop();
+    if (!root || seen.has(root)) continue;
+    seen.add(root);
+    try {{
+      collectFromRoot(root, out);
+    }} catch (_) {{}}
+
+    let elements = [];
+    try {{
+      elements = root.querySelectorAll ? Array.from(root.querySelectorAll('*')) : [];
+    }} catch (_) {{}}
+
+    for (const el of elements) {{
+      try {{
+        if (el.shadowRoot) queue.push(el.shadowRoot);
+      }} catch (_) {{}}
+
+      if (el.tagName === 'IFRAME') {{
+        try {{
+          const doc = el.contentDocument;
+          if (doc) queue.push(doc);
+        }} catch (_) {{}}
+      }}
+    }}
+  }}
+
+  return {{
+    missing: Array.from(out.missing).slice(0, 50),
+    invalid: Array.from(out.invalid).slice(0, 50),
+  }};
+}}
+"""
+
+    try:
+        raw_result = await page.evaluate(script)
+    except Exception:
+        # Fall back to text-based required error detection.
+        return (
+            ["required_field_error_text"]
+            if await _has_required_field_errors(browser_session)
+            else []
+        )
+
+    result: dict[str, object] | None = None
+    if isinstance(raw_result, dict):
+        result = raw_result
+    elif isinstance(raw_result, str):
+        try:
+            decoded = json.loads(raw_result) if raw_result.strip() else {}
+        except json.JSONDecodeError:
+            decoded = {}
+        if isinstance(decoded, dict):
+            result = decoded
+
+    missing = result.get("missing") if result is not None else None
+    invalid = result.get("invalid") if result is not None else None
+
+    blockers: list[str] = []
+    if isinstance(missing, list):
+        blockers.extend(str(item) for item in missing if str(item).strip())
+    if isinstance(invalid, list):
+        blockers.extend(f"invalid:{item}" for item in invalid if str(item).strip())
+    return blockers
 
 
 async def _has_submit_success_text(browser_session: BrowserSession) -> bool:

@@ -16,6 +16,11 @@
 
 ---
 
+- [x] **Track: Runner YOLO Reliability Hardening (Preflight + Robust Fill)**
+*Link: [./tracks/track_20260126_153245/](./tracks/track_20260126_153245/)*
+
+---
+
 - [x] **Track: LLM-Based Fit Scoring + Evaluation Harness**
 *Link: [./tracks/llm_scoring_eval_20260122_232717/](./tracks/llm_scoring_eval_20260122_232717/)*
 
@@ -62,6 +67,15 @@
 ---
 
 ## Completed Tracks (Narrative)
+
+### [track_20260126_153245] Runner YOLO Reliability Hardening (Preflight + Robust Fill) ✅
+- **Type**: Bug
+- **Status**: Completed
+- **Completed**: 2026-02-17
+- **Spec**: [spec.md](./tracks/track_20260126_153245/spec.md)
+- **Plan**: [plan.md](./tracks/track_20260126_153245/plan.md)
+
+Reliability hardening for YOLO runner and apply mode with preflight completeness gating, robust fill/select/upload behavior, safer submit flow integration, and improved artifact persistence under parser edge cases.
 
 ### [runner_yolo_20260122_015613] Runner YOLO Mode (Auto-Answer With Job + Profile Context) ✅
 - **Type**: Feature
