@@ -27,6 +27,17 @@
     - [ ] Avoid direct hard-coded REST endpoint strings in runner
     - [ ] Add notes for endpoint-version drift seen in docs (`/v1/run/tasks` vs `/api/v1/tasks`)
     - [ ] Ensure local base_url wiring is explicit and test-covered
+- [ ] Task: Implement legacy `RUNNER_LLM_*` compatibility mapping
+    - [ ] Add adapter to map:
+      - [ ] `RUNNER_LLM_PROVIDER`
+      - [ ] `RUNNER_LLM_API_KEY`
+      - [ ] `RUNNER_LLM_BASE_URL`
+      - [ ] `RUNNER_LLM_MODEL`
+      - [ ] `RUNNER_LLM_REASONING_EFFORT`
+      into Skyvern provider env/config inputs
+    - [ ] Prefer OpenAI-compatible bridge when `RUNNER_LLM_BASE_URL` is set
+    - [ ] Add strict validation for unsupported combinations (e.g. `browser_use` provider in Skyvern mode)
+    - [ ] Define precedence between explicit Skyvern config, compatibility mapping, and service defaults
 - [ ] Task: Add startup/health diagnostics for local Skyvern dependency
     - [ ] Fast-fail checks with actionable error messages
     - [ ] Optional health probe helper for CLI and tests
@@ -68,12 +79,14 @@
     - [ ] Skyvern client request/response mapping tests
     - [ ] Service orchestration tests for success/skip/failure/blocked cases
     - [ ] CLI runner mode tests (`single`, `apply`) for Skyvern path
+    - [ ] Legacy env compatibility tests for `RUNNER_LLM_*` -> Skyvern config mapping
 - [ ] Task: Add integration tests with controllable Skyvern endpoint stubs
     - [ ] Task lifecycle polling behavior
     - [ ] Artifact persistence behavior
     - [ ] Failure-mode diagnostics
     - [ ] Delayed browser-profile archive upload (400 persisted-not-ready) retry behavior
     - [ ] Browser profile restore failure fallback path
+    - [ ] End-to-end smoke with `RUNNER_LLM_BASE_URL` + `RUNNER_LLM_MODEL` OpenAI-compatible local backend
 - [ ] Task: Run quality gates
     - [ ] `ruff check .`
     - [ ] targeted `pytest` for runner/autonomous/cli modules
@@ -83,6 +96,7 @@
 - [ ] Task: Update docs for local Skyvern runner operations
     - [ ] Setup and env examples
     - [ ] Browser profile reuse instructions
+    - [ ] `RUNNER_LLM_*` compatibility mapping table and migration examples
     - [ ] Troubleshooting playbook
 - [ ] Task: Deprecate/clean obsolete Browser Use runner internals
     - [ ] Remove dead code paths that are no longer used by runner execution

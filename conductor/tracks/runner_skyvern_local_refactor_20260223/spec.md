@@ -110,12 +110,42 @@ Context7 research findings that drive this refactor:
 - Store and reuse `browser_profile_id` for runner workflows that need authenticated session state.
 - Define fallback behavior when profile restore fails (e.g., re-bootstrap path and explicit user-facing diagnostics).
 
+### FR10: Legacy Runner LLM Env Compatibility Layer
+- The Skyvern-backed runner must accept legacy runner LLM inputs:
+  - `RUNNER_LLM_PROVIDER`
+  - `RUNNER_LLM_API_KEY`
+  - `RUNNER_LLM_BASE_URL`
+  - `RUNNER_LLM_MODEL`
+  - `RUNNER_LLM_REASONING_EFFORT`
+- Compatibility mapping contract (adapter-owned, deterministic, test-covered):
+  - `RUNNER_LLM_BASE_URL` set:
+    - enable OpenAI-compatible path in Skyvern (`ENABLE_OPENAI_COMPATIBLE=true`)
+    - map base URL -> `OPENAI_COMPATIBLE_API_BASE`
+    - map model -> `OPENAI_COMPATIBLE_MODEL_NAME`
+    - map key -> `OPENAI_COMPATIBLE_API_KEY`
+    - map reasoning effort -> `OPENAI_COMPATIBLE_REASONING_EFFORT` when non-empty
+    - set `LLM_KEY=OPENAI_COMPATIBLE` unless an explicit supported override is provided
+  - `RUNNER_LLM_PROVIDER=openai` without custom base URL:
+    - enable OpenAI provider (`ENABLE_OPENAI=true`)
+    - map key -> `OPENAI_API_KEY`
+    - use `LLM_KEY` mapped from `RUNNER_LLM_MODEL` (fallback to project default if unset)
+  - `RUNNER_LLM_PROVIDER=anthropic` without custom base URL:
+    - enable Anthropic provider (`ENABLE_ANTHROPIC=true`)
+    - map key -> `ANTHROPIC_API_KEY`
+    - use `LLM_KEY` mapped from `RUNNER_LLM_MODEL` (fallback to project default if unset)
+- Unsupported/ambiguous values (for example `RUNNER_LLM_PROVIDER=browser_use` in Skyvern mode) must fail fast with actionable diagnostics.
+- Compatibility precedence for runner path:
+  1) explicit Skyvern runner config (new settings)
+  2) mapped `RUNNER_LLM_*` compatibility values
+  3) existing Skyvern service defaults
+
 ## Non-Functional Requirements
 - Reliability-first implementation with clear timeout/retry policies and deterministic failure messages.
 - Keep module boundaries clean: runner-specific Skyvern integration code remains inside `src/runner/*`.
 - Maintain or improve existing unit/integration coverage for runner orchestration contracts.
 - No breaking changes to extractor/scoring/tailoring public contracts.
 - Explicitly test asynchronous profile-archive lag and retry behavior to prevent flaky first-run failures.
+- Legacy env compatibility behavior must be deterministic and matrix-tested across provider/base-url/model combinations.
 
 ## Acceptance Criteria
 - `single` mode executes full pipeline and uses Skyvern (local) for application execution.
@@ -126,6 +156,7 @@ Context7 research findings that drive this refactor:
 - Tests pass for new adapter logic, service orchestration behavior, and CLI integration for runner paths.
 - Documentation includes a verified local Skyvern setup path and browser-profile reuse instructions.
 - Browser profile bootstrap/reuse flow is validated, including delayed-archive retry behavior and failure diagnostics.
+- `RUNNER_LLM_*` values are accepted and correctly mapped for Skyvern local execution, with clear failure messages for unsupported mappings.
 
 ## Source Notes (Research Refresh 2026-02-23)
 - Skyvern Quickstart (local server/UI options, CLI and Docker setup)
