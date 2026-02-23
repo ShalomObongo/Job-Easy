@@ -138,6 +138,23 @@ class _DummyEvalPage:
         return self._result
 
 
+class _SequencedEvalPage:
+    def __init__(self, results: list[object]) -> None:
+        self._results = list(results)
+        self._index = 0
+        self.evaluate_calls: list[str] = []
+
+    async def evaluate(self, fn: str):
+        self.evaluate_calls.append(fn)
+        if not self._results:
+            return {"missing": [], "invalid": []}
+        if self._index >= len(self._results):
+            return self._results[-1]
+        result = self._results[self._index]
+        self._index += 1
+        return result
+
+
 class _DummyEvalBrowserSession:
     def __init__(self, page: _DummyEvalPage) -> None:
         self._page = page
@@ -165,6 +182,56 @@ async def test_preflight_find_blockers_parses_json_string_from_page_evaluate() -
     payload = {"missing": ["Email"], "invalid": ["Phone"]}
     session = _DummyEvalBrowserSession(_DummyEvalPage(json.dumps(payload)))
     assert await preflight_find_blockers(session) == ["Email", "invalid:Phone"]
+
+
+@pytest.mark.asyncio
+async def test_preflight_check_marks_repeated_blocker_loops() -> None:
+    tools = create_hitl_tools()
+    action = tools.registry.registry.actions["preflight_check"].function
+
+    page = _SequencedEvalPage(
+        [
+            {"missing": ["Email"], "invalid": []},
+            {"missing": ["Email"], "invalid": []},
+            {"missing": ["Email"], "invalid": []},
+        ]
+    )
+    session = _DummyEvalBrowserSession(page)
+
+    first = json.loads(await action(browser_session=session))
+    second = json.loads(await action(browser_session=session))
+    third = json.loads(await action(browser_session=session))
+
+    assert all(not str(item).startswith("stuck:preflight_blockers_repeated:") for item in first)
+    assert all(not str(item).startswith("stuck:preflight_blockers_repeated:") for item in second)
+    assert any(str(item).startswith("stuck:preflight_blockers_repeated:3") for item in third)
+
+
+@pytest.mark.asyncio
+async def test_preflight_check_resets_repeat_tracking_after_clear_pass() -> None:
+    tools = create_hitl_tools()
+    action = tools.registry.registry.actions["preflight_check"].function
+
+    page = _SequencedEvalPage(
+        [
+            {"missing": ["Email"], "invalid": []},
+            {"missing": ["Email"], "invalid": []},
+            {"missing": [], "invalid": []},
+            {"missing": ["Email"], "invalid": []},
+        ]
+    )
+    session = _DummyEvalBrowserSession(page)
+
+    await action(browser_session=session)
+    await action(browser_session=session)
+    clear_pass = json.loads(await action(browser_session=session))
+    after_reset = json.loads(await action(browser_session=session))
+
+    assert clear_pass == []
+    assert all(
+        not str(item).startswith("stuck:preflight_blockers_repeated:")
+        for item in after_reset
+    )
 
 
 @pytest.mark.asyncio
@@ -201,3 +268,39 @@ def test_create_hitl_tools_registers_custom_form_actions() -> None:
         "confirm_submit",
     ):
         assert name in actions
+
+
+@pytest.mark.asyncio
+async def test_ask_yes_no_defaults_to_no_on_eof(monkeypatch) -> None:
+    tools = create_hitl_tools()
+    ask_yes_no = tools.registry.registry.actions["ask_yes_no"].function
+
+    def _raise_eof(_question: str) -> bool:
+        raise EOFError
+
+    monkeypatch.setattr("src.hitl.tools.prompt_yes_no", _raise_eof)
+    assert await ask_yes_no(question="continue?") == "no"
+
+
+@pytest.mark.asyncio
+async def test_ask_free_text_defaults_empty_on_eof(monkeypatch) -> None:
+    tools = create_hitl_tools()
+    ask_free_text = tools.registry.registry.actions["ask_free_text"].function
+
+    def _raise_eof(_question: str) -> str:
+        raise EOFError
+
+    monkeypatch.setattr("src.hitl.tools.prompt_free_text", _raise_eof)
+    assert await ask_free_text(question="text?") == ""
+
+
+@pytest.mark.asyncio
+async def test_ask_otp_code_defaults_empty_on_eof(monkeypatch) -> None:
+    tools = create_hitl_tools()
+    ask_otp_code = tools.registry.registry.actions["ask_otp_code"].function
+
+    def _raise_eof(_prompt: str) -> str:
+        raise EOFError
+
+    monkeypatch.setattr("src.hitl.tools.prompt_otp_code", _raise_eof)
+    assert await ask_otp_code(prompt="otp?") == "__OTP_UNAVAILABLE_NON_INTERACTIVE__"

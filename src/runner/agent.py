@@ -308,6 +308,11 @@ YOLO mode is enabled.
 
 You are given a job+user context payload to answer application questions best-effort.
 
+YOLO automation constraints:
+- Do NOT call ask_yes_no or ask_free_text; this run is non-interactive.
+- If a field asks for an attestation about AI-generated content, choose the truthful option based on your actual behavior in this run.
+- If truthful completion is impossible without human-authored text, return status=blocked with clear notes instead of looping.
+
 Job + user context (JSON):
 ```json
 {context_json}
@@ -354,6 +359,7 @@ Files available for upload (only use these exact paths):
   - If the tool returns "submitted", proceed to verify submission (confirmation text/screenshot) and finish with status submitted.
   - If the tool returns "blocked_missing_fields", do NOT submit; fill the missing required fields and only then call confirm_submit again.
   - If the tool returns "blocked_otp", do NOT submit; an OTP/verification step is blocking progress. Ask the human for the code (use ask_otp_code), enter it, and only then retry.
+    - If ask_otp_code returns "__OTP_UNAVAILABLE_NON_INTERACTIVE__" or an empty string, stop immediately with status=blocked and note "otp_required_non_interactive". Do not loop.
     - If the code is rejected (e.g., the page shows "invalid security code" / "code expired"), ask the human for a NEW code and retry once. Do not brute-force.
   - If the tool returns "blocked_captcha", do NOT submit; bot protection/CAPTCHA is blocking progress. Ask the human to complete the CAPTCHA in the browser, then retry.
   - If the tool returns "confirmed", the click may have failed; click the final submit button yourself."""
@@ -367,6 +373,7 @@ Files available for upload (only use these exact paths):
   - If the tool returns "submitted", proceed to verify submission (confirmation text/screenshot) and finish with status submitted.
   - If the tool returns "blocked_missing_fields", do NOT submit; fill the missing required fields and only then call confirm_submit again.
   - If the tool returns "blocked_otp", do NOT submit; an OTP/verification step is blocking progress. Ask the human for the code (use ask_otp_code), enter it, and only then retry.
+    - If ask_otp_code returns "__OTP_UNAVAILABLE_NON_INTERACTIVE__" or an empty string, stop immediately with status=blocked and note "otp_required_non_interactive". Do not loop.
     - If the code is rejected (e.g., the page shows "invalid security code" / "code expired"), ask the human for a NEW code and retry once. Do not brute-force.
   - If the tool returns "blocked_captcha", do NOT submit; bot protection/CAPTCHA is blocking progress. Ask the human to complete the CAPTCHA in the browser, then retry.
   - If the tool returns "confirmed", the human confirmed but the click failed; you must click the final submit button yourself.
@@ -394,11 +401,13 @@ Form filling rules:
 {form_rule_0}
 1) For dropdown/select fields, do NOT type with input().
    - Native <select> / listbox-style controls: use dropdown_options(index) (optional) then select_dropdown(index, text).
-   - Combobox fields (role="combobox", React-select style): prefer select_dropdown(index, text) directly.
+   - Combobox fields (role="combobox", React-select style): use select_dropdown(index, text) directly. Do NOT call dropdown_options first.
    - If a combobox is collapsed, click its toggle flyout first, then select the visible option text.
    - If select_dropdown fails but options are visibly open, use click_visible_option(option_text, browser_session) as fallback.
+   - If dropdown_options fails repeatedly for the same index, stop retrying it and use select_dropdown(index, text) directly.
 2) Run preflight_check(browser_session) before attempting to submit. If it returns any blockers, do NOT submit; fill those missing/invalid required fields and re-run preflight_check until it returns [].
    - Note: some fields (especially textareas inside shadow DOM) may not show their current value in browser_state; preflight_check is the source of truth for whether required fields are still missing.
+   - If preflight_check returns an entry starting with "stuck:preflight_blockers_repeated", you are looping. Change strategy (different field order, direct select_dropdown, or ask for human help for the blocking field) instead of repeating the same actions.
 3) If browser_state shows required-field errors (e.g. "This field is required.", "Resume/CV is required.", or invalid=true on required inputs), you are NOT at the final submit step yet. Fix missing fields/uploads first.
 4) Only upload the cover letter if there is a dedicated "Cover Letter" upload field. Never overwrite the Resume/CV field with the cover letter.
 5) If the cover letter field is text-only (no upload), generate a brief cover letter using the job information and company name from the page.
@@ -417,7 +426,9 @@ Flow handling:
    - If it BLOCKS progress (you cannot continue or submit), stop and ask the user for manual help; do not bypass.
    - If it's NOT blocking (e.g., a reCAPTCHA notice/badge in the footer), continue normally.
    - If an OTP code is rejected as invalid/expired, ask the human for a new code and retry once; do not brute-force.
+   - If ask_otp_code returns "__OTP_UNAVAILABLE_NON_INTERACTIVE__" or an empty string, stop with status=blocked and note "otp_required_non_interactive" (non-interactive run).
 7) IMPORTANT: Complete ALL required fields before calling confirm_submit. Use preflight_check to confirm required fields are complete before attempting submission. Do not give up or return "blocked" status until you have tried to fill every required field including radio buttons, checkboxes, and dropdowns.
+8) Do NOT terminate with errors like "missing tool results" or "need next loop input". This run is self-contained. If state is uncertain, re-check the page with preflight_check/search/find actions and continue.
 
 {submit_gate_section}
 

@@ -731,7 +731,8 @@ Detected violations:
 
         # Format certifications / training
         certifications_text = ""
-        for cert in getattr(profile, "certifications", []):
+        certifications = list(getattr(profile, "certifications", []) or [])
+        for cert in certifications:
             issuer = f" — {cert.issuer}" if getattr(cert, "issuer", None) else ""
             date_awarded = (
                 f" ({cert.date_awarded})" if getattr(cert, "date_awarded", None) else ""
@@ -749,6 +750,9 @@ Detected violations:
         section_order = [
             s for s in (plan.section_order or []) if str(s).strip().lower() != "summary"
         ]
+        # If the profile has no certifications, ensure we don't ask for a certifications section.
+        if not certifications:
+            section_order = [s for s in section_order if str(s).strip().lower() != "certifications"]
         section_order_text = " -> ".join(section_order)
 
         # Format evidence mappings
@@ -785,7 +789,7 @@ Detected violations:
 {education_text or "Not specified"}
 
 ## Certifications / Training
-{certifications_text or "Not specified"}
+{certifications_text if certifications_text.strip() else "(None provided — omit this section in the final resume.)"}
 
 ---
 
@@ -809,7 +813,7 @@ Generate a tailored resume by:
 2. Creating experience sections with rewritten bullets that naturally integrate the keywords above
 3. Including a skills section with relevant skills grouped appropriately
 4. Including an education section
-5. Including a certifications/training section if provided
+5. Including a certifications/training section **only if certifications are provided**. If none are provided, **omit the section entirely** (do not write “Not specified”).
 
 Remember:
 - ONLY use information from the candidate's actual profile above

@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -57,6 +58,7 @@ _OTP_BLOCK_PHRASES = (
     "2fa",
     "otp",
 )
+_OTP_UNAVAILABLE_SENTINEL = "__OTP_UNAVAILABLE_NON_INTERACTIVE__"
 
 # Placeholder values that often indicate an unselected required combobox/select.
 _PLACEHOLDER_VALUES = (
@@ -153,6 +155,8 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
             prompting the human. Use with caution.
     """
     tools = Tools()
+    preflight_last_signature = ""
+    preflight_repeat_count = 0
 
     def _normalize_whitespace(value: str) -> str:
         return " ".join(str(value or "").strip().split()).lower()
@@ -322,6 +326,28 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
         )
         return str(raw or "")
 
+    async def _read_control_snapshot(element) -> dict[str, str]:
+        raw = await element.evaluate(
+            """
+() => JSON.stringify({
+  tag: (this && this.tagName) ? this.tagName.toLowerCase() : '',
+  value: (this && 'value' in this) ? String(this.value || '') : '',
+  text: String(this && (this.innerText || this.textContent || '') || ''),
+  selectedText: (this && this.tagName && this.tagName.toLowerCase() === 'select' && this.selectedOptions && this.selectedOptions[0])
+    ? String(this.selectedOptions[0].textContent || '')
+    : '',
+})
+"""
+        )
+        try:
+            decoded = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            decoded = {}
+
+        if not isinstance(decoded, dict):
+            return {}
+        return {key: str(value or "") for key, value in decoded.items()}
+
     async def _read_dropdown_meta(element) -> dict[str, str]:
         raw = await element.evaluate(
             """
@@ -349,6 +375,7 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
 () => {
   const el = this;
   if (!el) return false;
+  const expanded = String(el.getAttribute?.('aria-expanded') || '').toLowerCase() === 'true';
 
   const clickNode = (node) => {
     if (!node || typeof node.click !== 'function') return false;
@@ -359,6 +386,12 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
       return false;
     }
   };
+
+  // Keep an already-open combobox open; avoid accidental toggle-close.
+  if (expanded) {
+    try { el.focus?.(); } catch (_) {}
+    return true;
+  }
 
   // Focus/click the combobox input itself first.
   try { el.focus?.(); } catch (_) {}
@@ -429,6 +462,91 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
             return [str(item) for item in raw if str(item).strip()]
         return []
 
+    def _selection_candidates(text: str) -> list[str]:
+        base = str(text or "").strip()
+        if not base:
+            return []
+
+        candidates: list[str] = [base]
+        lowered = base.lower()
+
+        normalized = (
+            lowered.replace("’", "'")
+            .replace(".", " ")
+            .replace("-", " ")
+            .replace("_", " ")
+        )
+        compact = " ".join(normalized.split())
+        if compact and compact != lowered:
+            candidates.append(compact)
+
+        if "bachelor" in compact and "degree" not in compact:
+            candidates.extend(["Bachelor's Degree", "Bachelors Degree", "Bachelor Degree"])
+        if "master" in compact and "degree" not in compact:
+            candidates.extend(["Master's Degree", "Masters Degree", "Master Degree"])
+        if "doctor" in compact and "degree" not in compact:
+            candidates.extend(["Doctoral Degree", "Doctorate"])
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for item in candidates:
+            key = item.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        return deduped
+
+    async def _type_combobox_query(element, query: str) -> None:
+        await element.evaluate(
+            """
+(value) => {
+  const el = this;
+  if (!el) return '';
+
+  const nextValue = String(value || '');
+  try { el.focus?.(); } catch (_) {}
+
+  const proto = Object.getPrototypeOf(el);
+  const desc = proto ? Object.getOwnPropertyDescriptor(proto, 'value') : null;
+  if (desc && typeof desc.set === 'function') {
+    desc.set.call(el, nextValue);
+  } else {
+    el.value = nextValue;
+  }
+
+  try {
+    el.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        cancelable: true,
+        data: nextValue,
+        inputType: 'insertText',
+      })
+    );
+  } catch (_) {
+    el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+  }
+
+  el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+
+  try {
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'ArrowDown',
+        code: 'ArrowDown',
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+  } catch (_) {}
+
+  return String(el.value || '');
+}
+""",
+            query,
+        )
+
     async def _verify_file_attached(element) -> tuple[int, list[str]]:
         raw = await element.evaluate(
             """
@@ -452,11 +570,27 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
 
     @tools.action(description="Ask the human a yes/no question. Returns 'yes' or 'no'.")
     def ask_yes_no(question: str) -> str:
-        return "yes" if prompt_yes_no(question) else "no"
+        try:
+            return "yes" if prompt_yes_no(question) else "no"
+        except EOFError:
+            logger.warning(
+                "ask_yes_no received EOF in non-interactive mode; defaulting to 'no'. "
+                "question=%r",
+                question,
+            )
+            return "no"
 
     @tools.action(description="Ask the human for free text input.")
     def ask_free_text(question: str) -> str:
-        return prompt_free_text(question)
+        try:
+            return prompt_free_text(question)
+        except EOFError:
+            logger.warning(
+                "ask_free_text received EOF in non-interactive mode; returning empty string. "
+                "question=%r",
+                question,
+            )
+            return ""
 
     @tools.action(
         description=(
@@ -503,7 +637,26 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
         )
     )
     async def preflight_check(browser_session) -> str:
+        nonlocal preflight_last_signature, preflight_repeat_count
         blockers = await preflight_find_blockers(browser_session)
+        normalized = tuple(
+            sorted({str(item).strip() for item in blockers if str(item).strip()})
+        )
+        signature = json.dumps(normalized, ensure_ascii=False)
+
+        if not normalized:
+            preflight_last_signature = ""
+            preflight_repeat_count = 0
+        elif signature == preflight_last_signature:
+            preflight_repeat_count += 1
+        else:
+            preflight_last_signature = signature
+            preflight_repeat_count = 1
+
+        if normalized and preflight_repeat_count >= 3:
+            blockers.append(
+                f"stuck:preflight_blockers_repeated:{preflight_repeat_count}"
+            )
         return json.dumps(blockers)
 
     @tools.action(
@@ -694,6 +847,16 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
                 include_extracted_content_only_once=True,
             )
 
+        if is_combobox:
+            msg = (
+                f"No visible options currently for combobox index {index}. "
+                "Use select_dropdown(index, text) directly."
+            )
+            return ActionResult(
+                extracted_content=msg,
+                long_term_memory=f"Combobox options not currently visible for index {index}",
+            )
+
         return ActionResult(
             error=(
                 f"Failed to get dropdown options for index {index}. "
@@ -731,15 +894,66 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
                 await asyncio.sleep(0.12)
 
         selection_data: dict[str, str] | None = None
-        try:
-            event = browser_session.event_bus.dispatch(
-                SelectDropdownOptionEvent(node=node, text=text)
-            )
-            selection_data = await event.event_result()
-        except Exception as exc:
-            logger.warning("select_dropdown event failed: %s", exc)
+        chosen_text = str(text or "").strip()
+        candidates = _selection_candidates(chosen_text) or [chosen_text]
+        is_combobox = meta.get("role") == "combobox"
+
+        # Some comboboxes already contain the chosen value (resume/profile prefill).
+        # Treat that as success instead of forcing a fragile re-selection.
+        if is_combobox:
+            with contextlib.suppress(Exception):
+                snapshot = await _read_control_snapshot(element)
+                existing_values = [
+                    str(snapshot.get("value") or ""),
+                    str(snapshot.get("selectedText") or ""),
+                    str(snapshot.get("text") or ""),
+                ]
+                for candidate in candidates:
+                    if any(
+                        _values_match(expected=candidate, actual=value)
+                        for value in existing_values
+                        if value
+                    ):
+                        msg = f"Selected option: {candidate}"
+                        return ActionResult(
+                            extracted_content=msg,
+                            include_in_memory=True,
+                            long_term_memory=f"Selected dropdown option '{candidate}' at index {index}",
+                        )
+
+        for candidate in candidates:
+            try:
+                event = browser_session.event_bus.dispatch(
+                    SelectDropdownOptionEvent(node=node, text=candidate)
+                )
+                selection_data = await event.event_result()
+            except Exception as exc:
+                logger.warning("select_dropdown event failed: %s", exc)
+                selection_data = None
+
+            if isinstance(selection_data, dict) and selection_data.get("success") == "true":
+                chosen_text = candidate
+                break
 
         success = bool(selection_data and selection_data.get("success") == "true")
+        if not success and is_combobox:
+            with contextlib.suppress(Exception):
+                await _expand_combobox(element)
+                await _type_combobox_query(element, chosen_text)
+                await asyncio.sleep(0.12)
+                for candidate in candidates:
+                    event = browser_session.event_bus.dispatch(
+                        SelectDropdownOptionEvent(node=node, text=candidate)
+                    )
+                    retry_data = await event.event_result(timeout=2.0)
+                    if isinstance(retry_data, dict):
+                        selection_data = retry_data
+                        if retry_data.get("success") == "true":
+                            chosen_text = candidate
+                            break
+
+            success = bool(selection_data and selection_data.get("success") == "true")
+
         if not success:
             try:
                 await _expand_combobox(element)
@@ -747,89 +961,117 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
             except Exception:
                 pass
 
-            fallback_raw = await click_visible_option(
-                option_text=text,
-                browser_session=browser_session,
-                exact_match=True,
-            )
-            try:
-                fallback = json.loads(fallback_raw) if fallback_raw else {}
-            except json.JSONDecodeError:
-                fallback = {}
+            for candidate in candidates:
+                if is_combobox:
+                    with contextlib.suppress(Exception):
+                        await _expand_combobox(element)
+                        await _type_combobox_query(element, candidate)
+                        await asyncio.sleep(0.12)
 
-            if isinstance(fallback, dict) and fallback.get("status") == "clicked":
-                msg = f"Selected option: {text}"
-                return ActionResult(
-                    extracted_content=msg,
-                    long_term_memory=f"Selected dropdown option '{text}' at index {index}",
+                fallback_raw = await click_visible_option(
+                    option_text=candidate,
+                    browser_session=browser_session,
+                    exact_match=True,
                 )
+                try:
+                    fallback = json.loads(fallback_raw) if fallback_raw else {}
+                except json.JSONDecodeError:
+                    fallback = {}
+
+                if isinstance(fallback, dict) and fallback.get("status") == "clicked":
+                    msg = f"Selected option: {candidate}"
+                    return ActionResult(
+                        extracted_content=msg,
+                        long_term_memory=f"Selected dropdown option '{candidate}' at index {index}",
+                    )
 
             # Last attempt: allow partial text match for dynamic option labels.
-            fallback_raw = await click_visible_option(
-                option_text=text,
-                browser_session=browser_session,
-                exact_match=False,
-            )
-            try:
-                fallback = json.loads(fallback_raw) if fallback_raw else {}
-            except json.JSONDecodeError:
-                fallback = {}
+            for candidate in candidates:
+                if is_combobox:
+                    with contextlib.suppress(Exception):
+                        await _expand_combobox(element)
+                        await _type_combobox_query(element, candidate)
+                        await asyncio.sleep(0.12)
 
-            if isinstance(fallback, dict) and fallback.get("status") == "clicked":
-                chosen = str(fallback.get("chosen") or text).strip()
-                msg = f"Selected option: {chosen}"
-                return ActionResult(
-                    extracted_content=msg,
-                    long_term_memory=f"Selected dropdown option '{chosen}' at index {index}",
+                fallback_raw = await click_visible_option(
+                    option_text=candidate,
+                    browser_session=browser_session,
+                    exact_match=False,
                 )
+                try:
+                    fallback = json.loads(fallback_raw) if fallback_raw else {}
+                except json.JSONDecodeError:
+                    fallback = {}
+
+                if isinstance(fallback, dict) and fallback.get("status") == "clicked":
+                    chosen = str(fallback.get("chosen") or candidate).strip()
+                    msg = f"Selected option: {chosen}"
+                    return ActionResult(
+                        extracted_content=msg,
+                        long_term_memory=f"Selected dropdown option '{chosen}' at index {index}",
+                    )
+
+            # Final combobox fallback: if the typed value persisted in the control,
+            # continue and let preflight_check validate whether the field is acceptable.
+            if is_combobox:
+                with contextlib.suppress(Exception):
+                    element = await _build_element_for_node(browser_session, node)
+                    snapshot = await _read_control_snapshot(element)
+                    existing_values = [
+                        str(snapshot.get("value") or ""),
+                        str(snapshot.get("selectedText") or ""),
+                        str(snapshot.get("text") or ""),
+                    ]
+                    for candidate in candidates:
+                        if any(
+                            _values_match(expected=candidate, actual=value)
+                            for value in existing_values
+                            if value
+                        ):
+                            msg = f"Selected option: {candidate}"
+                            return ActionResult(
+                                extracted_content=msg,
+                                include_in_memory=True,
+                                long_term_memory=(
+                                    f"Selected dropdown option '{candidate}' at index {index}"
+                                ),
+                            )
 
             error = (
                 selection_data.get("error") if selection_data else None
-            ) or f"Failed to select option: {text}"
+            ) or f"Failed to select option: {chosen_text}"
             return ActionResult(error=error)
 
         # Best-effort verification for native selects / input-based comboboxes.
         try:
             element = await _build_element_for_node(browser_session, node)
-            raw = await element.evaluate(
-                """
-() => JSON.stringify({
-  tag: (this && this.tagName) ? this.tagName.toLowerCase() : '',
-  value: (this && 'value' in this) ? String(this.value || '') : '',
-  text: String(this.innerText || this.textContent || ''),
-  selectedText: (this && this.tagName && this.tagName.toLowerCase() === 'select' && this.selectedOptions && this.selectedOptions[0])
-    ? String(this.selectedOptions[0].textContent || '')
-    : '',
-})
-"""
-            )
-            decoded = json.loads(raw) if raw else {}
+            decoded = await _read_control_snapshot(element)
             candidates = [
                 str(decoded.get("value") or ""),
                 str(decoded.get("selectedText") or ""),
                 str(decoded.get("text") or ""),
             ]
             if any(
-                _values_match(expected=text, actual=value)
+                _values_match(expected=chosen_text, actual=value)
                 for value in candidates
                 if value
             ):
                 msg = selection_data.get("message") if selection_data else None
-                msg = msg or f"Selected option: {text}"
+                msg = msg or f"Selected option: {chosen_text}"
                 return ActionResult(
                     extracted_content=msg,
                     include_in_memory=True,
-                    long_term_memory=f"Selected dropdown option '{text}' at index {index}",
+                    long_term_memory=f"Selected dropdown option '{chosen_text}' at index {index}",
                 )
         except Exception:
             pass
 
         msg = selection_data.get("message") if selection_data else None
-        msg = msg or f"Selected option: {text}"
+        msg = msg or f"Selected option: {chosen_text}"
         return ActionResult(
             extracted_content=msg,
             include_in_memory=True,
-            long_term_memory=f"Selected dropdown option '{text}' at index {index}",
+            long_term_memory=f"Selected dropdown option '{chosen_text}' at index {index}",
         )
 
     @tools.action(
@@ -1227,7 +1469,14 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
 
     @tools.action(description="Ask the human for an OTP/2FA code.")
     def ask_otp_code(prompt: str) -> str:
-        return prompt_otp_code(prompt)
+        try:
+            return prompt_otp_code(prompt)
+        except EOFError:
+            logger.warning(
+                "ask_otp_code received EOF in non-interactive mode; "
+                "returning OTP unavailable sentinel."
+            )
+            return _OTP_UNAVAILABLE_SENTINEL
 
     return tools
 
@@ -1502,6 +1751,26 @@ async def preflight_find_blockers(browser_session: BrowserSession) -> list[str]:
       if (!anyChecked) addUnique(out.missing, `radio:${{name}}`);
     }}
 
+    // Checkboxes: group by name when required (at least one must be checked).
+    const requiredCheckboxNames = new Set();
+    for (const el of inputs) {{
+      const tag = String(el.tagName || '').toLowerCase();
+      if (tag !== 'input') continue;
+      const type = String(el.type || el.getAttribute('type') || '').toLowerCase();
+      if (type !== 'checkbox') continue;
+      if (!isVisible(el)) continue;
+      if (!isRequired(el)) continue;
+      if (el.name) requiredCheckboxNames.add(el.name);
+    }}
+    for (const name of requiredCheckboxNames) {{
+      const group = Array.from(
+        root.querySelectorAll(`input[type=\"checkbox\"][name=\"${{CSS.escape(name)}}\"]`)
+      ).filter((c) => isVisible(c) && !c.disabled);
+      if (!group.length) continue;
+      const anyChecked = group.some((c) => Boolean(c.checked));
+      if (!anyChecked) addUnique(out.missing, `checkbox:${{name}}`);
+    }}
+
     for (const el of inputs) {{
       if (!isVisible(el)) continue;
       if (isIntentionallyBlank(el) && !isRequired(el)) continue;
@@ -1513,6 +1782,7 @@ async def preflight_find_blockers(browser_session: BrowserSession) -> list[str]:
         if (type === 'radio') continue;
 
         if (type === 'checkbox') {{
+          if (el.name && requiredCheckboxNames.has(el.name)) continue;
           if (isRequired(el) && !el.checked) addUnique(out.missing, labelFor(el));
           continue;
         }}
@@ -1532,7 +1802,12 @@ async def preflight_find_blockers(browser_session: BrowserSession) -> list[str]:
         }}
 
         const ariaInvalid = el.getAttribute('aria-invalid') === 'true';
-        const invalid = ariaInvalid || (typeof el.checkValidity === 'function' && !el.checkValidity());
+        let invalid = ariaInvalid || (typeof el.checkValidity === 'function' && !el.checkValidity());
+        if (String(el.getAttribute('role') || '').toLowerCase() === 'combobox' && comboboxSelected) {{
+          // React-select style comboboxes often keep stale aria-invalid on the input
+          // even after a visible value is selected.
+          invalid = false;
+        }}
         if (invalid && (required || String(value || '').trim() !== '')) addUnique(out.invalid, labelFor(el));
         continue;
       }}
