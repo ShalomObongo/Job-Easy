@@ -714,6 +714,18 @@ def main(args: list[str] | None = None) -> int:
             print(getattr(result, "error", None) or "Tailoring failed", file=sys.stderr)
             return 1
 
+        plan = getattr(result, "plan", None)
+        if plan is not None:
+            _write_json(run_dir / "tailoring_plan.json", plan.to_dict())
+
+        resume = getattr(result, "resume", None)
+        if resume is not None:
+            _write_json(run_dir / "tailored_resume.json", resume.to_dict())
+
+        cover_letter = getattr(result, "cover_letter", None)
+        if cover_letter is not None:
+            _write_json(run_dir / "cover_letter.json", cover_letter.to_dict())
+
         review_packet_path = run_dir / "review_packet.json"
         review_packet = getattr(result, "review_packet", None)
         if review_packet is not None:

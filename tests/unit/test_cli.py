@@ -16,7 +16,13 @@ from src.scoring.models import (
     UserProfile,
     WorkExperience,
 )
-from src.tailoring.models import DocReviewPacket
+from src.tailoring.models import (
+    CoverLetter,
+    DocReviewPacket,
+    TailoredResume,
+    TailoredSection,
+    TailoringPlan,
+)
 from src.tailoring.service import TailoringResult
 
 
@@ -648,13 +654,54 @@ def test_cli_tailor_mode_writes_review_packet_json(monkeypatch, tmp_path) -> Non
             resume_path=resume_path,
             cover_letter_path=cover_path,
         )
+        plan = TailoringPlan(
+            job_url="https://example.com/jobs/123",
+            company="Acme",
+            role_title="Engineer",
+            keyword_matches=[],
+            evidence_mappings=[],
+            section_order=["experience", "skills"],
+            bullet_rewrites=[],
+            unsupported_claims=[],
+        )
+        resume = TailoredResume(
+            name="Test User",
+            email="test@example.com",
+            location="Remote",
+            summary="Summary",
+            sections=[
+                TailoredSection(
+                    name="skills",
+                    title="Technical Skills",
+                    content="Python",
+                    bullets=[],
+                )
+            ],
+            keywords_used=["Python"],
+            target_job_url="https://example.com/jobs/123",
+            target_company="Acme",
+            target_role="Engineer",
+        )
+        cover = None
+        if generate_cover_letter:
+            cover = CoverLetter(
+                opening="Opening",
+                body="Body",
+                closing="Closing",
+                full_text="Opening\n\nBody\n\nClosing",
+                word_count=3,
+                target_job_url="https://example.com/jobs/123",
+                target_company="Acme",
+                target_role="Engineer",
+                key_qualifications=[],
+            )
 
         return TailoringResult(
             success=True,
             error=None,
-            plan=None,
-            resume=None,
-            cover_letter=None,
+            plan=plan,
+            resume=resume,
+            cover_letter=cover,
             review_packet=packet,
             resume_path=resume_path,
             cover_letter_path=cover_path,
@@ -679,6 +726,9 @@ def test_cli_tailor_mode_writes_review_packet_json(monkeypatch, tmp_path) -> Non
 
     assert exit_code == 0
     assert (tmp_path / "review_packet.json").exists()
+    assert (tmp_path / "tailoring_plan.json").exists()
+    assert (tmp_path / "tailored_resume.json").exists()
+    assert (tmp_path / "cover_letter.json").exists()
 
 
 def test_extract_first_json_object_ignores_trailing_commentary() -> None:
@@ -736,9 +786,14 @@ def test_cli_apply_mode_parses_json_with_trailing_text(monkeypatch, tmp_path) ->
         lambda _settings: object(),
         raising=False,
     )
+
+    def _fake_create_browser(_settings, prohibited_domains=None):
+        _ = prohibited_domains
+        return _FakeBrowser()
+
     monkeypatch.setattr(
         "src.runner.agent.create_browser",
-        lambda _settings, prohibited_domains=None: _FakeBrowser(),
+        _fake_create_browser,
         raising=False,
     )
     monkeypatch.setattr(
@@ -746,9 +801,14 @@ def test_cli_apply_mode_parses_json_with_trailing_text(monkeypatch, tmp_path) ->
         _fake_create_application_agent,
         raising=False,
     )
+
+    def _fake_create_hitl_tools(auto_submit=False):
+        _ = auto_submit
+        return object()
+
     monkeypatch.setattr(
         "src.hitl.tools.create_hitl_tools",
-        lambda auto_submit=False: object(),
+        _fake_create_hitl_tools,
         raising=False,
     )
 

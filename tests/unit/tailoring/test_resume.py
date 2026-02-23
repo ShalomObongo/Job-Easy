@@ -18,8 +18,14 @@ from src.tailoring.models import (
     TailoredResume,
     TailoredSection,
     TailoringPlan,
+    UnsupportedClaim,
 )
-from src.tailoring.resume import ResumeTailoringService
+from src.tailoring.resume import (
+    ResumeTailoringService,
+    TailoredBulletLLM,
+    TailoredResumeLLMResponse,
+    TailoredSectionLLM,
+)
 
 
 @pytest.fixture
@@ -312,6 +318,68 @@ class TestSectionReordering:
             section_names = [s.name for s in result.sections]
             assert len(section_names) >= 1
 
+    def test_normalizes_to_canonical_section_order(
+        self, sample_user_profile, sample_tailoring_plan
+    ):
+        """Resume sections should follow canonical recruiter-facing order."""
+        service = ResumeTailoringService()
+        response = TailoredResumeLLMResponse(
+            summary="Summary",
+            sections=[
+                TailoredSectionLLM(
+                    name="projects",
+                    title="Projects",
+                    content="",
+                    bullets=[
+                        TailoredBulletLLM(text="Project X — Built workflow tooling.")
+                    ],
+                ),
+                TailoredSectionLLM(
+                    name="education",
+                    title="Education",
+                    content="BS in CS",
+                    bullets=[],
+                ),
+                TailoredSectionLLM(
+                    name="skills",
+                    title="Technical Skills",
+                    content="Automation: Power Automate",
+                    bullets=[],
+                ),
+                TailoredSectionLLM(
+                    name="experience",
+                    title="Professional Experience",
+                    content="",
+                    bullets=[
+                        TailoredBulletLLM(
+                            text="Engineer, Acme (2023-01-01 – Present) — Built APIs."
+                        )
+                    ],
+                ),
+                TailoredSectionLLM(
+                    name="certifications",
+                    title="Certifications",
+                    content="PL-900",
+                    bullets=[],
+                ),
+            ],
+            keywords_used=[],
+        )
+
+        normalized = service._normalize_resume_response(
+            response=response,
+            plan=sample_tailoring_plan,
+            profile=sample_user_profile,
+        )
+
+        assert [s.name for s in normalized.sections] == [
+            "experience",
+            "skills",
+            "certifications",
+            "education",
+            "projects",
+        ]
+
 
 class TestBulletRewriting:
     """Tests for bullet point rewriting."""
@@ -428,3 +496,202 @@ class TestTruthfulnessEnforcement:
             )
             # Should not contain fabricated companies
             assert "FakeCompany" not in full_text
+
+
+class TestResumeValidationImprovements:
+    """Tests for new quality and truthfulness validation behavior."""
+
+    def teardown_method(self):
+        """Reset config after each test."""
+        reset_tailoring_config()
+
+    def test_allows_single_bullet_for_sparse_role_evidence(self):
+        """Sparse profile evidence should allow a single truthful bullet."""
+        service = ResumeTailoringService()
+        profile = UserProfile(
+            name="Jane Doe",
+            email="jane@example.com",
+            location="Remote",
+            skills=["Python"],
+            years_of_experience=3,
+            work_history=[
+                WorkExperience(
+                    company="Acme",
+                    title="Engineer",
+                    start_date="2023-01-01",
+                    end_date=None,
+                    description="Built APIs.",
+                    skills_used=["Python"],
+                )
+            ],
+            education=[],
+        )
+        plan = TailoringPlan(
+            job_url="https://example.com/jobs/1",
+            company="Example",
+            role_title="Engineer",
+            keyword_matches=[],
+            evidence_mappings=[],
+            section_order=["experience", "skills"],
+            bullet_rewrites=[],
+            unsupported_claims=[],
+        )
+        response = TailoredResumeLLMResponse(
+            summary="Python engineer with API experience.",
+            sections=[
+                TailoredSectionLLM(
+                    name="experience",
+                    title="Professional Experience",
+                    content="",
+                    bullets=[
+                        TailoredBulletLLM(
+                            text="Engineer, Acme (2023-01-01 – Present) — Built APIs."
+                        )
+                    ],
+                )
+            ],
+            keywords_used=[],
+        )
+
+        issues = service._collect_resume_validation_issues(response, profile, plan)
+        assert not any("must have 2" in issue for issue in issues)
+
+    def test_does_not_require_projects_without_grounded_evidence(
+        self, sample_user_profile
+    ):
+        """Projects section should not be forced when no project evidence exists."""
+        service = ResumeTailoringService()
+        plan = TailoringPlan(
+            job_url="https://example.com/jobs/2",
+            company="Example",
+            role_title="Backend Engineer",
+            keyword_matches=[],
+            evidence_mappings=[],
+            section_order=["experience", "projects", "skills"],
+            bullet_rewrites=[],
+            unsupported_claims=[],
+        )
+        response = TailoredResumeLLMResponse(
+            summary="Backend engineer.",
+            sections=[
+                TailoredSectionLLM(
+                    name="experience",
+                    title="Professional Experience",
+                    content="",
+                    bullets=[
+                        TailoredBulletLLM(
+                            text="Senior Software Engineer, Tech Corp (2020-01-01 – Present) — Led development of Python microservices."
+                        ),
+                        TailoredBulletLLM(
+                            text="Senior Software Engineer, Tech Corp (2020-01-01 – Present) — Improved reliability of backend systems."
+                        ),
+                    ],
+                )
+            ],
+            keywords_used=[],
+        )
+
+        issues = service._collect_resume_validation_issues(
+            response, sample_user_profile, plan
+        )
+        assert "Plan requests a projects section, but none was produced." not in issues
+
+    def test_flags_unsupported_claim_keywords(self, sample_user_profile):
+        """Unsupported claim keywords should be rejected if they appear in output."""
+        service = ResumeTailoringService()
+        plan = TailoringPlan(
+            job_url="https://example.com/jobs/3",
+            company="Example",
+            role_title="Engineer",
+            keyword_matches=[],
+            evidence_mappings=[],
+            section_order=["experience"],
+            bullet_rewrites=[],
+            unsupported_claims=[
+                UnsupportedClaim(
+                    requirement="Kubernetes experience required",
+                    reason="No Kubernetes background in profile",
+                    severity="critical",
+                )
+            ],
+        )
+        response = TailoredResumeLLMResponse(
+            summary="Engineer with Kubernetes production experience.",
+            sections=[],
+            keywords_used=[],
+        )
+
+        issues = service._collect_resume_validation_issues(
+            response, sample_user_profile, plan
+        )
+        assert any("unsupported claim keyword" in issue for issue in issues)
+
+    def test_does_not_flag_unsupported_claim_keyword_when_profile_has_evidence(
+        self, sample_user_profile
+    ):
+        """Profile-grounded terms should not be blocked by unsupported claim hints."""
+        service = ResumeTailoringService()
+        profile = sample_user_profile.model_copy(
+            update={
+                "skills": sample_user_profile.skills
+                + ["Microsoft Power Automate", "Process Automation"],
+            }
+        )
+        plan = TailoringPlan(
+            job_url="https://example.com/jobs/4",
+            company="Example",
+            role_title="Automation Engineer",
+            keyword_matches=[],
+            evidence_mappings=[],
+            section_order=["experience"],
+            bullet_rewrites=[],
+            unsupported_claims=[
+                UnsupportedClaim(
+                    requirement=(
+                        "3+ years building automation solutions with "
+                        "Microsoft Power Automate or comparable workflow platforms"
+                    ),
+                    reason="Cannot verify exact tenure from profile text",
+                    severity="warning",
+                )
+            ],
+        )
+        response = TailoredResumeLLMResponse(
+            summary=(
+                "Automation engineer experienced with Microsoft Power Automate "
+                "workflow design and deployment."
+            ),
+            sections=[],
+            keywords_used=[],
+        )
+
+        issues = service._collect_resume_validation_issues(response, profile, plan)
+        assert not any("unsupported claim keyword" in issue for issue in issues)
+
+    def test_recomputes_keywords_from_generated_content(
+        self, sample_job_description, sample_tailoring_plan
+    ):
+        """keywords_used should be computed from actual generated text."""
+        service = ResumeTailoringService()
+        response = TailoredResumeLLMResponse(
+            summary="Senior Python engineer building FastAPI services.",
+            sections=[
+                TailoredSectionLLM(
+                    name="skills",
+                    title="Technical Skills",
+                    content="Backend: Python, FastAPI",
+                    bullets=[],
+                )
+            ],
+            keywords_used=["NotTrustedKeyword"],
+        )
+
+        keywords = service._recompute_keywords_used(
+            response=response,
+            job=sample_job_description,
+            plan=sample_tailoring_plan,
+        )
+
+        assert "Python" in keywords
+        assert "FastAPI" in keywords
+        assert "NotTrustedKeyword" not in keywords

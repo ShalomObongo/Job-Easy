@@ -115,9 +115,7 @@ class TestTailoringLLMStructuredOutput:
             MagicMock(message=MagicMock(content='{"name": "test", "value": 42}'))
         ]
 
-        with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
-        ) as mock_completion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -131,6 +129,26 @@ class TestTailoringLLMStructuredOutput:
             assert result.value == 42
 
     @pytest.mark.asyncio
+    async def test_generate_structured_parses_tool_call_arguments(self):
+        """Structured parsing should support tool_call arguments payloads."""
+        tool_call = MagicMock(function=MagicMock(arguments='{"name":"test","value":7}'))
+        message = MagicMock(content=None, tool_calls=[tool_call])
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=message)]
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+            mock_completion.return_value = mock_response
+
+            llm = TailoringLLM()
+            result = await llm.generate_structured(
+                prompt="Generate from tool call args",
+                output_model=SampleOutput,
+            )
+
+            assert result.name == "test"
+            assert result.value == 7
+
+    @pytest.mark.asyncio
     async def test_generate_structured_with_system_prompt(self):
         """Test that system prompt is included in messages."""
         mock_response = MagicMock()
@@ -138,9 +156,7 @@ class TestTailoringLLMStructuredOutput:
             MagicMock(message=MagicMock(content='{"name": "result", "value": 1}'))
         ]
 
-        with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
-        ) as mock_completion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -165,9 +181,7 @@ class TestTailoringLLMStructuredOutput:
             MagicMock(message=MagicMock(content='{"name": "test", "value": 1}'))
         ]
 
-        with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
-        ) as mock_completion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -188,9 +202,7 @@ class TestTailoringLLMStructuredOutput:
             MagicMock(message=MagicMock(content='{"name": "test", "value": 1}'))
         ]
 
-        with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
-        ) as mock_completion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
             mock_completion.return_value = mock_response
 
             config = TailoringConfig(_env_file=None, llm_reasoning_effort="high")
@@ -212,7 +224,7 @@ class TestTailoringLLMErrorHandling:
     async def test_raises_llm_error_on_failure(self):
         """Test that LLMError is raised when LLM call fails."""
         with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+            "src.tailoring.llm.TailoringLLM._call_completion", new_callable=AsyncMock
         ) as mock_completion:
             mock_completion.side_effect = Exception("API Error")
 
@@ -233,9 +245,7 @@ class TestTailoringLLMErrorHandling:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content="not valid json"))]
 
-        with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
-        ) as mock_completion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -256,9 +266,7 @@ class TestTailoringLLMErrorHandling:
             MagicMock(message=MagicMock(content='{"name": "test"}'))
         ]
 
-        with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
-        ) as mock_completion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -288,7 +296,7 @@ class TestTailoringLLMErrorHandling:
             return mock_response
 
         with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
+            "src.tailoring.llm.TailoringLLM._call_completion", new_callable=AsyncMock
         ) as mock_completion:
             mock_completion.side_effect = side_effect
 
@@ -319,9 +327,7 @@ class TestTailoringLLMTextGeneration:
             MagicMock(message=MagicMock(content="Generated text response"))
         ]
 
-        with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
-        ) as mock_completion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -336,9 +342,7 @@ class TestTailoringLLMTextGeneration:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content="Response"))]
 
-        with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
-        ) as mock_completion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
             mock_completion.return_value = mock_response
 
             llm = TailoringLLM()
@@ -368,9 +372,7 @@ class TestTailoringLLMConfiguration:
             MagicMock(message=MagicMock(content='{"name": "test", "value": 1}'))
         ]
 
-        with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
-        ) as mock_completion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
             mock_completion.return_value = mock_response
 
             config = TailoringConfig(_env_file=None, llm_timeout=120.0)
@@ -393,9 +395,7 @@ class TestTailoringLLMConfiguration:
             MagicMock(message=MagicMock(content='{"name": "test", "value": 1}'))
         ]
 
-        with patch(
-            "src.tailoring.llm.acompletion", new_callable=AsyncMock
-        ) as mock_completion:
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
             mock_completion.return_value = mock_response
 
             config = TailoringConfig(_env_file=None, llm_api_key="test-api-key")

@@ -42,6 +42,13 @@ _SECTION_TITLE_BY_NAME = {
     "education": "Education",
     "certifications": "Certifications",
 }
+_CANONICAL_SECTION_ORDER = [
+    "experience",
+    "skills",
+    "certifications",
+    "education",
+    "projects",
+]
 
 
 class TailoredBulletLLM(BaseModel):
@@ -181,7 +188,7 @@ We render job headers from bullet prefixes. Every experience bullet MUST start w
 - Use END="Present" if the role is current.
 - Then write ONE accomplishment sentence (optional second sentence). Do not cram multiple accomplishments with semicolons.
 - Pick 4+ (if not all) of the most relevant roles from the profile (or fewer if there is experience that is completely unnecessary. Otherwise dont leave any out).
-- 2–4 bullets per role (total experience bullets <= 10).
+- 1–4 bullets per role (use 1 only when profile evidence is sparse; otherwise use 2–4).
 - Each bullet should be: action verb + scope + tech + measurable outcome (ONLY if the profile provides a number).
 - Do not claim CI/CD, unit tests, MongoDB, etc. unless explicitly supported by the profile text.
 
@@ -259,6 +266,266 @@ class ResumeTailoringService:
 
         return None
 
+    def _normalize_text_token(self, value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9]+", " ", str(value).strip().lower())
+        return re.sub(r"\s+", " ", normalized).strip()
+
+    def _tokens_match(self, left: str, right: str) -> bool:
+        if not left or not right:
+            return False
+        if left == right or left in right or right in left:
+            return True
+        left_tokens = set(left.split())
+        right_tokens = set(right.split())
+        overlap = left_tokens & right_tokens
+        if not overlap:
+            return False
+        return len(overlap) >= min(2, len(left_tokens), len(right_tokens))
+
+    def _role_company_exists_in_profile(
+        self, role: str, company: str, profile: UserProfile
+    ) -> bool:
+        role_norm = self._normalize_text_token(role)
+        company_norm = self._normalize_text_token(company)
+        for exp in profile.work_history:
+            exp_role = self._normalize_text_token(exp.title)
+            exp_company = self._normalize_text_token(exp.company)
+            if self._tokens_match(role_norm, exp_role) and self._tokens_match(
+                company_norm, exp_company
+            ):
+                return True
+        return False
+
+    def _has_limited_role_evidence(
+        self, role: str, company: str, profile: UserProfile
+    ) -> bool:
+        role_norm = self._normalize_text_token(role)
+        company_norm = self._normalize_text_token(company)
+        for exp in profile.work_history:
+            exp_role = self._normalize_text_token(exp.title)
+            exp_company = self._normalize_text_token(exp.company)
+            if not (
+                self._tokens_match(role_norm, exp_role)
+                and self._tokens_match(company_norm, exp_company)
+            ):
+                continue
+            description = (exp.description or "").strip()
+            sentences = [
+                s.strip() for s in re.split(r"[.!?]+", description) if s.strip()
+            ]
+            return (
+                len(sentences) <= 1
+                and len(exp.skills_used) <= 3
+                and len(description) <= 160
+            )
+        return False
+
+    def _minimum_bullets_for_role(
+        self, role: str, company: str, profile: UserProfile
+    ) -> int:
+        return 1 if self._has_limited_role_evidence(role, company, profile) else 2
+
+    def _plan_has_project_grounding(
+        self, profile: UserProfile, plan: TailoringPlan
+    ) -> bool:
+        project_pattern = re.compile(
+            r"\b(project|portfolio|open[- ]source|side project)\b", re.IGNORECASE
+        )
+        for mapping in plan.evidence_mappings:
+            text = f"{mapping.requirement} {mapping.evidence}"
+            if project_pattern.search(text):
+                return True
+        for rewrite in plan.bullet_rewrites:
+            if project_pattern.search(f"{rewrite.original} {rewrite.suggested}"):
+                return True
+        for exp in profile.work_history:
+            if project_pattern.search(exp.description or ""):
+                return True
+        return False
+
+    def _extract_claim_keywords(self, requirement: str) -> list[str]:
+        stop_words = {
+            "ability",
+            "across",
+            "align",
+            "and",
+            "at",
+            "build",
+            "building",
+            "create",
+            "develop",
+            "driven",
+            "enable",
+            "ensure",
+            "experience",
+            "for",
+            "from",
+            "have",
+            "in",
+            "knowledge",
+            "maintain",
+            "must",
+            "of",
+            "operational",
+            "or",
+            "outcomes",
+            "plus",
+            "preferred",
+            "process",
+            "required",
+            "requirement",
+            "requirements",
+            "responsible",
+            "role",
+            "scalable",
+            "solutions",
+            "strong",
+            "support",
+            "teams",
+            "the",
+            "to",
+            "using",
+            "with",
+            "work",
+            "workflow",
+            "years",
+            "year",
+        }
+        tokens = re.findall(r"[A-Za-z0-9#+./-]+", requirement)
+        return [
+            t
+            for t in tokens
+            if len(t) >= 3 and t.lower() not in stop_words and not t.isdigit()
+        ]
+
+    def _normalize_lookup_text(self, value: str) -> str:
+        text = re.sub(r"[^a-z0-9#+./-]+", " ", str(value or "").lower())
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _value_in_lookup_text(self, value: str, lookup_text: str) -> bool:
+        normalized_value = self._normalize_lookup_text(value)
+        if not normalized_value:
+            return False
+        return bool(
+            re.search(
+                rf"(?<![a-z0-9]){re.escape(normalized_value)}(?![a-z0-9])",
+                lookup_text,
+            )
+        )
+
+    def _build_profile_lookup_text(self, profile: UserProfile) -> str:
+        parts: list[str] = [
+            profile.name,
+            profile.current_title,
+            profile.summary,
+            " ".join(profile.skills),
+        ]
+
+        for exp in profile.work_history:
+            parts.extend(
+                [
+                    exp.company,
+                    exp.title,
+                    exp.description,
+                    " ".join(exp.skills_used),
+                ]
+            )
+
+        for edu in profile.education:
+            parts.extend([edu.institution, edu.degree, edu.field])
+
+        for cert in getattr(profile, "certifications", []) or []:
+            parts.extend(
+                [
+                    getattr(cert, "name", ""),
+                    getattr(cert, "issuer", ""),
+                    getattr(cert, "url", ""),
+                ]
+            )
+
+        return self._normalize_lookup_text(" ".join(p for p in parts if p))
+
+    def _collect_unsupported_claim_issues(
+        self,
+        response: TailoredResumeLLMResponse,
+        plan: TailoringPlan,
+        profile: UserProfile,
+    ) -> list[str]:
+        text_parts = [response.summary]
+        for section in response.sections:
+            text_parts.append(section.content)
+            text_parts.extend(bullet.text for bullet in section.bullets)
+        combined = self._normalize_lookup_text(
+            " ".join(part for part in text_parts if part)
+        )
+        profile_lookup = self._build_profile_lookup_text(profile)
+        issues: list[str] = []
+        for claim in plan.unsupported_claims:
+            for keyword in self._extract_claim_keywords(claim.requirement):
+                # If the profile already contains this keyword, it is valid evidence.
+                # Unsupported-claim hints are noisy and should only block out-of-profile terms.
+                if self._value_in_lookup_text(keyword, profile_lookup):
+                    continue
+                if self._value_in_lookup_text(keyword, combined):
+                    issues.append(
+                        "Resume appears to include unsupported claim keyword "
+                        f"'{keyword}' from requirement '{claim.requirement}'."
+                    )
+                    break
+        return issues
+
+    def _expand_keyword_phrase(self, raw_keyword: str) -> list[str]:
+        cleaned = str(raw_keyword or "").strip().strip(".,;:")
+        if not cleaned:
+            return []
+        parts = re.split(r"\s*(?:,|/|\||\bor\b|\band\b)\s*", cleaned, flags=re.I)
+        expanded = [part.strip().strip(".,;:") for part in parts if part.strip()]
+        if expanded:
+            return expanded
+        return [cleaned]
+
+    def _extract_target_keywords(
+        self, job: JobDescription, plan: TailoringPlan
+    ) -> list[str]:
+        raw_keywords: list[str] = []
+        raw_keywords.extend(str(skill) for skill in (job.required_skills or []))
+        raw_keywords.extend(str(skill) for skill in (job.preferred_skills or []))
+        raw_keywords.extend(match.job_keyword for match in plan.keyword_matches)
+        keywords: list[str] = []
+        seen: set[str] = set()
+        for raw in raw_keywords:
+            for expanded in self._expand_keyword_phrase(raw):
+                normalized = expanded.casefold()
+                if not expanded or normalized in seen:
+                    continue
+                seen.add(normalized)
+                keywords.append(expanded)
+        return keywords
+
+    def _keyword_appears_in_text(self, text: str, keyword: str) -> bool:
+        if not keyword:
+            return False
+        if re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", text, flags=re.IGNORECASE):
+            return True
+        return keyword.lower() in text.lower()
+
+    def _recompute_keywords_used(
+        self,
+        response: TailoredResumeLLMResponse,
+        job: JobDescription,
+        plan: TailoringPlan,
+    ) -> list[str]:
+        text_parts = [response.summary]
+        for section in response.sections:
+            text_parts.append(section.content)
+            text_parts.extend(b.text for b in section.bullets)
+        combined_text = "\n".join(part for part in text_parts if part).strip()
+        keywords_used: list[str] = []
+        for keyword in self._extract_target_keywords(job, plan):
+            if self._keyword_appears_in_text(combined_text, keyword):
+                keywords_used.append(keyword)
+        return keywords_used
+
     def _collect_resume_validation_issues(
         self,
         response: TailoredResumeLLMResponse,
@@ -320,9 +587,20 @@ class ResumeTailoringService:
                     for (role, company), count in sorted(
                         per_role.items(), key=lambda x: (-x[1], x[0][0])
                     ):
-                        if count < 2 or count > 4:
+                        min_bullets = self._minimum_bullets_for_role(
+                            role, company, profile
+                        )
+                        if count < min_bullets or count > 4:
                             issues.append(
-                                f"Experience role '{role}' at '{company}' must have 2–4 bullets (got {count})."
+                                f"Experience role '{role}' at '{company}' must have "
+                                f"{min_bullets}–4 bullets (got {count})."
+                            )
+                        if not self._role_company_exists_in_profile(
+                            role, company, profile
+                        ):
+                            issues.append(
+                                "Experience includes role/company not found in "
+                                f"profile: '{role}' at '{company}'."
                             )
                 else:
                     issues.append(
@@ -337,15 +615,18 @@ class ResumeTailoringService:
                     f"Projects section must have 1–3 bullets total (got {bullet_count})."
                 )
 
-        # If the plan expects a projects section, enforce it exists with bullets.
+        # Only require projects when grounded evidence exists in plan/profile.
         plan_order = [str(s).strip().lower() for s in (plan.section_order or [])]
-        if "projects" in plan_order:
+        projects_grounded = self._plan_has_project_grounding(profile, plan)
+        if "projects" in plan_order and projects_grounded:
             if projects_section is None:
                 issues.append(
                     "Plan requests a projects section, but none was produced."
                 )
             elif not projects_section.bullets:
                 issues.append("Projects section must include 1–3 bullets.")
+
+        issues.extend(self._collect_unsupported_claim_issues(response, plan, profile))
 
         return issues
 
@@ -390,11 +671,15 @@ class ResumeTailoringService:
                     break
 
                 bodies = role_bodies.get(role_company, [])
-                if len(bodies) < 2:
+                role, company = role_company
+                if not self._role_company_exists_in_profile(role, company, profile):
+                    continue
+
+                min_bullets = self._minimum_bullets_for_role(role, company, profile)
+                if len(bodies) < min_bullets:
                     continue
 
                 dates = role_dates.get(role_company, "")
-                role, company = role_company
 
                 for body in bodies[:4]:
                     cleaned_bullets.append(
@@ -537,7 +822,7 @@ The JSON was valid but it violates required resume structure rules. Fix ONLY for
 Required fixes:
 - Ensure there is an Experience section.
 - Every Experience bullet MUST start with: `ROLE, COMPANY (START – END) — ` (END can be Present).
-- Every role in Experience MUST have 2–4 bullets. If you cannot produce >=2 truthful bullets for a role, REMOVE that role entirely.
+- Every role in Experience MUST have 1–4 bullets. Use 1 only when the profile has sparse evidence for that role; otherwise use 2–4.
 - Total Experience bullets <= 10.
 - Projects section (if present) MUST have 1–3 bullets total (format: `{{PROJECT}} — ...`).
 - Avoid semicolons; no empty bullets; do not invent facts.
@@ -566,6 +851,8 @@ Detected violations:
                 "Resume generation did not meet required structure after revisions: "
                 + "; ".join(issues[:8])
             )
+
+        response.keywords_used = self._recompute_keywords_used(response, job, plan)
 
         # Convert LLM response to TailoredResume with contact info from profile
         return TailoredResume(
@@ -600,6 +887,8 @@ Detected violations:
         plan: TailoringPlan,
         profile: UserProfile,
     ) -> TailoredResumeLLMResponse:
+        _ = plan
+
         def canonical_section_name(value: str) -> str:
             name = re.sub(r"[^a-z]+", " ", str(value).strip().lower()).strip()
             if name in _ALLOWED_SECTION_NAMES:
@@ -656,22 +945,8 @@ Detected violations:
                 bullets=bullets,
             )
 
-        plan_order = [
-            canonical_section_name(s)
-            for s in getattr(plan, "section_order", []) or []
-            if canonical_section_name(s) in _ALLOWED_SECTION_NAMES
-        ]
-        default_order = [
-            "experience",
-            "skills",
-            "projects",
-            "education",
-            "certifications",
-        ]
-        order = plan_order or default_order
-
         ordered_sections: list[TailoredSectionLLM] = []
-        for name in order:
+        for name in _CANONICAL_SECTION_ORDER:
             section = normalized_by_name.get(name)
             if section is not None:
                 ordered_sections.append(section)
@@ -746,19 +1021,34 @@ Detected violations:
             for m in plan.keyword_matches[:10]  # Top 10 keywords
         )
 
-        # Format section order
-        section_order = [
-            s for s in (plan.section_order or []) if str(s).strip().lower() != "summary"
-        ]
-        # If the profile has no certifications, ensure we don't ask for a certifications section.
+        # Use canonical section order for stable, recruiter-friendly output.
+        section_order = list(_CANONICAL_SECTION_ORDER)
         if not certifications:
-            section_order = [s for s in section_order if str(s).strip().lower() != "certifications"]
+            section_order.remove("certifications")
         section_order_text = " -> ".join(section_order)
 
         # Format evidence mappings
         evidence_text = ""
         for mapping in plan.evidence_mappings[:5]:  # Top 5 evidence items
             evidence_text += f"- {mapping.requirement}: {mapping.evidence} (from {mapping.source_company})\n"
+
+        # Format bullet rewrite hints from plan
+        rewrite_hints_text = ""
+        for rewrite in plan.bullet_rewrites[:8]:
+            keywords = ", ".join(rewrite.keywords_added[:5]) or "None"
+            rewrite_hints_text += (
+                f"- Original: {rewrite.original}\n"
+                f"  Suggested emphasis: {rewrite.suggested}\n"
+                f"  Keywords to preserve: {keywords}\n"
+            )
+
+        # Format unsupported claims as explicit do-not-claim constraints
+        unsupported_claims_text = ""
+        for claim in plan.unsupported_claims[:10]:
+            unsupported_claims_text += (
+                f"- Do not claim: {claim.requirement} "
+                f"({claim.severity}) — {claim.reason}\n"
+            )
 
         prompt = f"""# TARGET JOB
 
@@ -799,10 +1089,16 @@ Detected violations:
 {keywords_text or "Use skills from job requirements"}
 
 ## Section Order
-{section_order_text or "experience -> skills -> projects -> education -> certifications"}
+{section_order_text or "experience -> skills -> certifications -> education -> projects"}
 
 ## Key Evidence to Highlight
 {evidence_text or "Use strongest matches from work history"}
+
+## Bullet Rewrite Hints
+{rewrite_hints_text or "Use the strongest profile accomplishments and preserve truthfulness."}
+
+## Unsupported Claims (Hard Constraints)
+{unsupported_claims_text or "None explicitly flagged."}
 
 ---
 
@@ -818,8 +1114,9 @@ Generate a tailored resume by:
 Remember:
 - ONLY use information from the candidate's actual profile above
 - DO NOT invent new experiences, companies, or achievements
+- NEVER include unsupported claims listed above
 - Integrate keywords naturally - don't just prepend them
 - Keep specific metrics and facts exactly as provided
-- Order sections as: {section_order_text or "experience -> skills -> projects -> education -> certifications"}
+- Order sections as: {section_order_text or "experience -> skills -> certifications -> education -> projects"}
 """
         return prompt

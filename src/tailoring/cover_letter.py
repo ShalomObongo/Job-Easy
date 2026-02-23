@@ -7,6 +7,7 @@ and tailoring plan with word count targeting and evidence integration.
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -186,6 +187,8 @@ class CoverLetterService:
             closing = response.closing.strip()
 
             opening = self._ensure_company_mentioned(opening, body, closing, job)
+            body = self._remove_opening_hook_repetition(opening, body)
+            body = self._reduce_company_name_overuse(body, job.company)
             full_text = self._format_full_text(opening, body, closing)
             word_count = self._count_words(full_text)
 
@@ -238,6 +241,8 @@ Rules:
             closing=closing,
             max_words=max_words,
         )
+        body = self._remove_opening_hook_repetition(opening, body)
+        body = self._reduce_company_name_overuse(body, job.company)
         full_text = self._format_full_text(opening, body, closing)
         word_count = self._count_words(full_text)
 
@@ -270,17 +275,56 @@ Rules:
             return opening
 
         combined = f"{opening} {body} {closing}"
-        if company in combined:
+        if company.lower() in combined.lower():
             return opening
 
         role = (job.role_title or "this role").strip() or "this role"
         sentence = f"I'm excited to apply for the {role} position at {company}."
         opening = opening.strip()
+        if sentence.lower() in opening.lower():
+            return opening
         if not opening:
             return sentence
         if opening.endswith((".", "!", "?")):
             return f"{opening} {sentence}"
         return f"{opening}. {sentence}"
+
+    def _remove_opening_hook_repetition(self, opening: str, body: str) -> str:
+        """Remove verbatim opening-hook repetition from body paragraphs."""
+        opening = opening.strip()
+        body = body.strip()
+        if not opening or not body:
+            return body
+
+        opening_first = opening.split(".")[0].strip().lower()
+        paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
+        cleaned: list[str] = []
+        for idx, paragraph in enumerate(paragraphs):
+            first_sentence = paragraph.split(".")[0].strip().lower()
+            if idx == 0 and first_sentence and first_sentence == opening_first:
+                continue
+            cleaned.append(paragraph)
+        return "\n\n".join(cleaned).strip()
+
+    def _reduce_company_name_overuse(
+        self, body: str, company: str, limit: int = 2
+    ) -> str:
+        """Reduce excessive company-name repetition in body text."""
+        body = body.strip()
+        company = (company or "").strip()
+        if not body or not company:
+            return body
+
+        pattern = re.compile(re.escape(company), flags=re.IGNORECASE)
+        matches = list(pattern.finditer(body))
+        if len(matches) <= limit:
+            return body
+
+        # Keep early mentions, replace the rest with "your team".
+        replaced = body
+        for match in reversed(matches[limit:]):
+            replaced = replaced[: match.start()] + "your team" + replaced[match.end() :]
+        return replaced
 
     def _format_full_text(self, opening: str, body: str, closing: str) -> str:
         """Format the complete cover letter text consistently."""
@@ -420,6 +464,13 @@ Rules:
         evidence_text = ""
         for mapping in plan.evidence_mappings[:5]:
             evidence_text += f"- Job needs: {mapping.requirement}\n  Your evidence: {mapping.evidence}\n"
+        prioritized_evidence = ""
+        for idx, mapping in enumerate(plan.evidence_mappings[:3], start=1):
+            prioritized_evidence += (
+                f"{idx}. Requirement: {mapping.requirement}\n"
+                f"   Evidence to use: {mapping.evidence}\n"
+                f"   Source: {mapping.source_role} at {mapping.source_company}\n"
+            )
 
         # Format job requirements
         responsibilities = "\n".join(f"- {r}" for r in job.responsibilities[:5])
@@ -465,6 +516,9 @@ Rules:
 
 {evidence_text or "Use the strongest matches from the candidate profile."}
 
+## PRIORITIZED REQUIREMENT → EVIDENCE PAIRS
+{prioritized_evidence or "No explicit mappings provided; use strongest role-aligned evidence from profile."}
+
 ---
 
 # INSTRUCTIONS
@@ -473,7 +527,7 @@ Write a compelling cover letter for {profile.name} applying to the {job.role_tit
 
 Requirements:
 1. Opening paragraph: Express enthusiasm for this specific role at {job.company}
-2. Body (2-3 paragraphs): Highlight top 2-3 qualifications with concrete evidence from the profile
+2. Body (2-3 paragraphs): Highlight top 2-3 qualifications with concrete evidence from the profile, prioritizing the requirement→evidence pairs above
 3. Closing paragraph: Express eagerness to discuss further, professional sign-off
 
 Target word count: {self.config.cover_letter_min_words}-{self.config.cover_letter_max_words} words
@@ -483,5 +537,7 @@ Remember:
 - DO NOT invent new experiences or achievements
 - Keep specific metrics exactly as provided
 - Make it personal to {job.company} - not a generic letter
+- Avoid repeating the opening hook in body paragraphs
+- Mention {job.company} naturally (do not repeat company name in every paragraph)
 """
         return prompt

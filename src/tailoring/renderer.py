@@ -221,30 +221,46 @@ class PDFRenderer:
                 "bullets": merged_bullets,
             }
 
-        # Force a consistent resume flow: Experience before Projects.
-        experience_index = next(
-            (
-                i
-                for i, s in enumerate(combined)
-                if not s.get("__placeholder") and is_experience_section(s)
-            ),
-            None,
+        # Force canonical section order:
+        # Experience -> Skills -> Certifications -> Education -> Projects.
+        canonical_order = (
+            "experience",
+            "skills",
+            "certifications",
+            "education",
+            "projects",
         )
-        projects_index = next(
-            (
-                i
-                for i, s in enumerate(combined)
-                if not s.get("__placeholder") and is_projects_section(s)
-            ),
-            None,
-        )
-        if (
-            experience_index is not None
-            and projects_index is not None
-            and experience_index > projects_index
-        ):
-            experience_section = combined.pop(experience_index)
-            combined.insert(projects_index, experience_section)
+
+        def canonical_section_name(section_dict: dict[str, Any]) -> str | None:
+            if section_dict.get("__placeholder"):
+                return None
+            if is_experience_section(section_dict):
+                return "experience"
+            if is_skills_section(section_dict):
+                return "skills"
+            if is_projects_section(section_dict):
+                return "projects"
+            name_lower = str(section_dict.get("name") or "").lower()
+            title_lower = str(section_dict.get("title") or "").lower()
+            if "cert" in name_lower or "cert" in title_lower:
+                return "certifications"
+            if "education" in name_lower or "education" in title_lower:
+                return "education"
+            return None
+
+        reordered: list[dict[str, Any]] = []
+        used_indexes: set[int] = set()
+        for canonical in canonical_order:
+            for idx, section_dict in enumerate(combined):
+                if idx in used_indexes:
+                    continue
+                if canonical_section_name(section_dict) == canonical:
+                    reordered.append(section_dict)
+                    used_indexes.add(idx)
+        for idx, section_dict in enumerate(combined):
+            if idx not in used_indexes:
+                reordered.append(section_dict)
+        combined = reordered
 
         prepared: list[dict[str, Any]] = []
         for section_dict in combined:

@@ -175,6 +175,45 @@ class TestHTMLRendering:
         assert "Dear Hiring Manager" in html
         assert "Acme Corp" in html
 
+    def test_prepares_sections_in_canonical_order(self):
+        """Renderer should preserve canonical resume section flow."""
+        renderer = PDFRenderer()
+        sections = [
+            TailoredSection(name="projects", title="Projects", content="", bullets=[]),
+            TailoredSection(
+                name="education", title="Education", content="BS in CS", bullets=[]
+            ),
+            TailoredSection(
+                name="skills", title="Skills", content="Python", bullets=[]
+            ),
+            TailoredSection(
+                name="experience",
+                title="Professional Experience",
+                content="",
+                bullets=[
+                    TailoredBullet(
+                        text="Engineer, Acme (2023-01-01 – Present) — Built APIs."
+                    )
+                ],
+            ),
+            TailoredSection(
+                name="certifications",
+                title="Certifications",
+                content="PL-900",
+                bullets=[],
+            ),
+        ]
+
+        prepared = renderer._prepare_resume_sections(sections)
+
+        assert [section["name"] for section in prepared] == [
+            "experience",
+            "skills",
+            "certifications",
+            "education",
+            "projects",
+        ]
+
 
 class TestPDFGeneration:
     """Tests for PDF generation."""

@@ -7,28 +7,40 @@ Mark with @pytest.mark.integration to skip in CI without API keys.
 import os
 
 import pytest
+from dotenv import dotenv_values
 
 from src.extractor.models import JobDescription
 from src.scoring.models import Education, UserProfile, WorkExperience
 from src.tailoring.config import reset_tailoring_config
 from src.tailoring.plan import TailoringPlanService
 
+_KEYS = [
+    "TAILORING_LLM_API_KEY",
+    "EXTRACTOR_LLM_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "BROWSER_USE_API_KEY",
+    "LLM_API_KEY",
+    "TAILORING_LLM_BASE_URL",
+    "EXTRACTOR_LLM_BASE_URL",
+]
+_DOTENV_VALUES = dotenv_values(".env")
+
+
+def _has_llm_credentials_or_base_url() -> bool:
+    for key in _KEYS:
+        value = os.getenv(key)
+        if value is None or not str(value).strip():
+            value = _DOTENV_VALUES.get(key)
+        if value is not None and str(value).strip():
+            return True
+    return False
+
+
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        not any(
-            os.getenv(key)
-            for key in [
-                "TAILORING_LLM_API_KEY",
-                "EXTRACTOR_LLM_API_KEY",
-                "OPENAI_API_KEY",
-                "ANTHROPIC_API_KEY",
-                "BROWSER_USE_API_KEY",
-                "LLM_API_KEY",
-                "TAILORING_LLM_BASE_URL",
-                "EXTRACTOR_LLM_BASE_URL",
-            ]
-        ),
+        not _has_llm_credentials_or_base_url(),
         reason="No LLM credentials/base URL configured for tailoring integration tests",
     ),
 ]

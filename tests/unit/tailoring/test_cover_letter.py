@@ -447,3 +447,50 @@ class TestCoverLetterTruthfulness:
 
             # Should only mention real companies from profile
             assert "FakeCompany" not in result.full_text
+
+
+class TestCoverLetterQualityGuards:
+    """Tests for repetition and company-name quality guards."""
+
+    def teardown_method(self):
+        """Reset config after each test."""
+        reset_tailoring_config()
+
+    def test_company_presence_check_is_case_insensitive(self, sample_job_description):
+        """Company mention check should avoid duplicate sentence injection."""
+        service = CoverLetterService()
+        opening = "I am excited about this opportunity."
+        body = "I look forward to helping acme corp scale its platform."
+        closing = "Thank you."
+
+        updated = service._ensure_company_mentioned(
+            opening=opening,
+            body=body,
+            closing=closing,
+            job=sample_job_description,
+        )
+
+        assert updated == opening
+
+    def test_removes_opening_hook_repetition(self):
+        """Body should not restate the opening hook verbatim."""
+        service = CoverLetterService()
+        opening = "I am excited to apply for the role at Acme Corp."
+        body = (
+            "I am excited to apply for the role at Acme Corp.\n\n"
+            "I led backend improvements that cut latency by 40%."
+        )
+
+        cleaned = service._remove_opening_hook_repetition(opening, body)
+        assert cleaned.startswith("I led backend improvements")
+
+    def test_reduces_company_name_overuse(self):
+        """Body should limit excessive company-name repetition."""
+        service = CoverLetterService()
+        body = (
+            "Acme Corp needs engineers. Acme Corp values ownership. "
+            "I can help Acme Corp deliver outcomes."
+        )
+
+        cleaned = service._reduce_company_name_overuse(body, "Acme Corp", limit=1)
+        assert cleaned.lower().count("acme corp") == 1
