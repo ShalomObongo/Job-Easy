@@ -20,8 +20,13 @@
     - [ ] Timeout/retry/polling controls
 - [ ] Task: Add browser profile reuse compatibility guidance
     - [ ] Document required Skyvern env vars (`BROWSER_TYPE=cdp-connect`, `CHROME_EXECUTABLE_PATH`)
+    - [ ] Document optional attached-browser mode (`browser_address`) and required remote-debugging launch args
     - [ ] Document profile-copy behavior and first-run expectations
     - [ ] Align with existing `CHROME_USER_DATA_DIR` / `CHROME_PROFILE_DIR` operational flow
+- [ ] Task: Standardize API integration on Skyvern Python SDK
+    - [ ] Avoid direct hard-coded REST endpoint strings in runner
+    - [ ] Add notes for endpoint-version drift seen in docs (`/v1/run/tasks` vs `/api/v1/tasks`)
+    - [ ] Ensure local base_url wiring is explicit and test-covered
 - [ ] Task: Add startup/health diagnostics for local Skyvern dependency
     - [ ] Fast-fail checks with actionable error messages
     - [ ] Optional health probe helper for CLI and tests
@@ -39,6 +44,11 @@
     - [ ] Network failures and retries
     - [ ] Non-terminal polling timeout behavior
     - [ ] Structured error mapping to runner result model
+- [ ] Task: Implement browser profile bootstrap/reuse manager
+    - [ ] Bootstrap run path with `persist_browser_session: true`
+    - [ ] Post-completion profile creation with bounded retry/backoff for async archive readiness
+    - [ ] Reuse persisted `browser_profile_id` in follow-up runs
+    - [ ] Re-bootstrap/fail-fast fallback semantics when profile restore fails
 
 ## Phase 4: Replace Runner Service and CLI Execution Paths
 - [ ] Task: Refactor `SingleJobApplicationService._run_application_flow` to Skyvern backend
@@ -62,6 +72,8 @@
     - [ ] Task lifecycle polling behavior
     - [ ] Artifact persistence behavior
     - [ ] Failure-mode diagnostics
+    - [ ] Delayed browser-profile archive upload (400 persisted-not-ready) retry behavior
+    - [ ] Browser profile restore failure fallback path
 - [ ] Task: Run quality gates
     - [ ] `ruff check .`
     - [ ] targeted `pytest` for runner/autonomous/cli modules
@@ -79,4 +91,3 @@
 - [ ] Task: Manual verification checkpoint
     - [ ] Validate at least one real application-form smoke path in local environment
     - [ ] Capture artifacts and final migration notes in track folder
-

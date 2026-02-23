@@ -11,7 +11,8 @@ Context7 research findings that drive this refactor:
 - Skyvern supports local service execution with CLI and Docker Compose (`skyvern run ...`, `docker compose up -d`).
 - Skyvern supports local browser control via `BROWSER_TYPE=cdp-connect` and `CHROME_EXECUTABLE_PATH`.
 - Recent Chrome behavior requires profile-copy behavior for CDP connectivity; Skyvern handles this by copying user data to a local temp directory on first connect.
-- Skyvern exposes task/workflow APIs suitable for replacing Browser Use agent orchestration.
+- Skyvern exposes task/workflow APIs suitable for replacing Browser Use agent orchestration, and Browser Profiles for persisted login/session reuse.
+- Skyvern docs currently show multiple API surfaces/versions; this refactor should rely on the Python SDK to reduce endpoint/version drift risk.
 
 ## Skyvern Research Notes (Context7)
 
@@ -24,13 +25,24 @@ Context7 research findings that drive this refactor:
 - Task execution is available via `/v1/run/tasks` with prompt, URL, engine, and optional extraction schema payload.
 - Workflow execution is available via workflow APIs and YAML-defined block pipelines.
 - Python SDK supports local service targeting via `Skyvern(base_url=\"http://localhost:8000\", api_key=\"...\")`.
+- Docs also reference `/api/v1/tasks` in advanced examples, indicating endpoint/version drift across docs generations.
+- Design implication: prefer SDK wrapper calls over direct hard-coded REST paths in runner code.
 
 ### R3: Browser Control and Profile Reuse
 - Skyvern browser mode is configurable by env (e.g., `BROWSER_TYPE=chromium-headless` or `BROWSER_TYPE=cdp-connect`).
 - Local Chrome control requires `CHROME_EXECUTABLE_PATH` with `BROWSER_TYPE=cdp-connect`.
 - For recent Chrome versions, Skyvern documents a local profile-copy behavior for CDP connectivity, which is relevant to preserving logged-in session workflows.
+- Skyvern can also control an already-running browser via `browser_address` when Chrome is launched with remote debugging enabled.
+- In default control mode, Skyvern opens/closes its own browser per run; with `browser_address` mode, the external browser lifecycle remains user-managed.
 
-### R4: Refactor Direction Chosen
+### R4: Browser Profiles Lifecycle (Critical Reliability Detail)
+- Browser Profiles are generated from persisted browser state and are intended for login/session reuse.
+- For workflow-derived profiles, `persist_browser_session: true` must be enabled at the workflow level.
+- Profile creation is asynchronous relative to workflow completion because the session archive upload happens after run completion.
+- Immediate profile creation calls can fail with a 400-level \"no persisted session yet\" condition; retry with bounded backoff is explicitly recommended.
+- Reuse path: pass `browser_profile_id` to future workflow runs to restore cookies/storage/files before step 1.
+
+### R5: Refactor Direction Chosen
 - Use Skyvern local task/workflow execution as the runner backend.
 - Keep all Browser Use functionality outside runner execution paths unchanged (notably extractor).
 - Preserve existing pipeline orchestration semantics while replacing only runner-time browser automation primitives.
@@ -50,6 +62,9 @@ Context7 research findings that drive this refactor:
 ### FR3: Browser Profile Reuse Parity
 - The runner integration must support local Chrome/profile reuse expectations from existing `.env` usage.
 - Runner configuration and docs must define the Skyvern-local browser settings needed for profile reuse (`BROWSER_TYPE=cdp-connect`, `CHROME_EXECUTABLE_PATH`, and profile-copy behavior notes).
+- Runner configuration must support both:
+  - managed local Chrome mode (Skyvern launches browser from executable path), and
+  - attached browser mode (`browser_address`) when user keeps a debug-enabled browser instance alive.
 - Existing user operational flow for logged-in sessions must remain viable.
 
 ### FR4: Skyvern Task Contract for Job Apply Flows
@@ -59,6 +74,7 @@ Context7 research findings that drive this refactor:
   - resume/cover-letter artifact paths
   - run-level safety flags (`assume_yes`, `yolo_mode`, `auto_submit`)
 - Poll task/workflow state to terminal status and map outcomes into `ApplicationRunResult`.
+- Use Skyvern SDK calls (not hard-coded REST endpoint strings) to avoid doc/API-version inconsistencies.
 
 ### FR5: Safety and HITL Semantics Preservation
 - Existing pre-run safety gates must stay intact:
@@ -86,11 +102,20 @@ Context7 research findings that drive this refactor:
   - otherwise define scoped transitional behavior and migration notes
 - Avoid hidden regressions in question-answering behavior.
 
+### FR9: Profile Bootstrap and Rotation Contract
+- Implement a deterministic profile bootstrap flow:
+  - run designated auth/bootstrap workflow with `persist_browser_session: true`,
+  - wait for terminal run status,
+  - attempt browser profile creation with bounded retry/backoff until archive is available.
+- Store and reuse `browser_profile_id` for runner workflows that need authenticated session state.
+- Define fallback behavior when profile restore fails (e.g., re-bootstrap path and explicit user-facing diagnostics).
+
 ## Non-Functional Requirements
 - Reliability-first implementation with clear timeout/retry policies and deterministic failure messages.
 - Keep module boundaries clean: runner-specific Skyvern integration code remains inside `src/runner/*`.
 - Maintain or improve existing unit/integration coverage for runner orchestration contracts.
 - No breaking changes to extractor/scoring/tailoring public contracts.
+- Explicitly test asynchronous profile-archive lag and retry behavior to prevent flaky first-run failures.
 
 ## Acceptance Criteria
 - `single` mode executes full pipeline and uses Skyvern (local) for application execution.
@@ -100,6 +125,20 @@ Context7 research findings that drive this refactor:
 - Existing tracker-side persistence behavior remains intact for submitted runs.
 - Tests pass for new adapter logic, service orchestration behavior, and CLI integration for runner paths.
 - Documentation includes a verified local Skyvern setup path and browser-profile reuse instructions.
+- Browser profile bootstrap/reuse flow is validated, including delayed-archive retry behavior and failure diagnostics.
+
+## Source Notes (Research Refresh 2026-02-23)
+- Skyvern Quickstart (local server/UI options, CLI and Docker setup)
+  - https://docs.skyvern.com/getting-started/quickstart
+- Run Tasks (control own browser via `BROWSER_TYPE=cdp-connect`, `CHROME_EXECUTABLE_PATH`; attached browser via `browser_address`)
+  - https://docs.skyvern.com/running-tasks/run-tasks
+- Browser Configuration (browser mode selection and profile-copy behavior notes)
+  - https://docs.skyvern.com/self-hosted/browser-configuration
+- Browser Sessions and Browser Profiles lifecycle (persistence and reuse model)
+  - https://docs.skyvern.com/browser-sessions/introduction
+  - https://docs.skyvern.com/browser-sessions/browser-profiles
+- Skyvern open-source docs mirrored in repository (SDK examples and persistence caveats)
+  - https://github.com/skyvern-ai/skyvern
 
 ## Out of Scope
 - Rewriting extractor to Skyvern.
