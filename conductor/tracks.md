@@ -8,6 +8,11 @@
 
 ---
 
+- [ ] **Track: Runner Rewrite on Local Skyvern (Profile-Reuse First)**
+*Link: [./tracks/runner_skyvern_local_refactor_20260223/](./tracks/runner_skyvern_local_refactor_20260223/)*
+
+---
+
 - [x] **Track: Runner Combobox/Dropdown Reliability Hardening**
 *Link: [./tracks/runner_combobox_reliability_20260217/](./tracks/runner_combobox_reliability_20260217/)*
 
