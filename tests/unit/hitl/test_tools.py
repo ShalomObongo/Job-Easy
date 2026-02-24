@@ -202,9 +202,16 @@ async def test_preflight_check_marks_repeated_blocker_loops() -> None:
     second = json.loads(await action(browser_session=session))
     third = json.loads(await action(browser_session=session))
 
-    assert all(not str(item).startswith("stuck:preflight_blockers_repeated:") for item in first)
-    assert all(not str(item).startswith("stuck:preflight_blockers_repeated:") for item in second)
-    assert any(str(item).startswith("stuck:preflight_blockers_repeated:3") for item in third)
+    assert all(
+        not str(item).startswith("stuck:preflight_blockers_repeated:") for item in first
+    )
+    assert all(
+        not str(item).startswith("stuck:preflight_blockers_repeated:")
+        for item in second
+    )
+    assert any(
+        str(item).startswith("stuck:preflight_blockers_repeated:3") for item in third
+    )
 
 
 @pytest.mark.asyncio

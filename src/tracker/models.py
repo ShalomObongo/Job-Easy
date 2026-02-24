@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 
-class ApplicationStatus(str, Enum):
+class ApplicationStatus(StrEnum):
     """Status of a job application."""
 
     NEW = "new"
@@ -16,7 +16,7 @@ class ApplicationStatus(str, Enum):
     FAILED = "failed"
 
 
-class SourceMode(str, Enum):
+class SourceMode(StrEnum):
     """Mode in which the application was initiated."""
 
     SINGLE = "single"

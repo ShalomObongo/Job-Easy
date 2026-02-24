@@ -198,10 +198,13 @@ def test_get_application_prompt_includes_yolo_context() -> None:
     assert "confirm_submit" in prompt
     assert 'Combobox fields (role="combobox", React-select style)' in prompt
     assert "Do NOT call dropdown_options first." in prompt
-    assert "Do NOT call ask_yes_no or ask_free_text; this run is non-interactive." in prompt
+    assert (
+        "Do NOT call ask_yes_no or ask_free_text; this run is non-interactive."
+        in prompt
+    )
     assert '"otp_required_non_interactive"' in prompt
     assert 'Do NOT terminate with errors like "missing tool results"' in prompt
     assert (
-        'If preflight_check returns an entry starting with '
+        "If preflight_check returns an entry starting with "
         '"stuck:preflight_blockers_repeated"'
     ) in prompt

@@ -747,68 +747,29 @@ def test_extract_first_json_object_returns_none_for_non_json() -> None:
     assert _extract_first_json_object("not-json") is None
 
 
-def test_cli_apply_mode_parses_json_with_trailing_text(monkeypatch, tmp_path) -> None:
+def test_cli_apply_mode_uses_skyvern_runner(monkeypatch, tmp_path) -> None:
     from src.__main__ import main
 
     monkeypatch.setenv("RUNNER_YOLO_MODE", "false")
     monkeypatch.setenv("RUNNER_ASSUME_YES", "false")
     monkeypatch.setenv("RUNNER_AUTO_SUBMIT", "false")
 
-    class _FakeBrowser:
-        async def take_screenshot(self, *, path: str, full_page: bool = False) -> None:
-            _ = full_page
-            Path(path).write_text("png", encoding="utf-8")
-
-        async def close(self) -> None:
-            return None
-
-    class _FakeHistory:
-        structured_output = None
-
-        def final_result(self) -> str:
-            return (
-                '{"success": true, "status": "skipped", "notes": ["done"]}'
-                "\nJudge: extra commentary"
-            )
-
-    class _FakeAgent:
-        async def run(self):
-            return _FakeHistory()
-
     captured: dict[str, object] = {}
 
-    def _fake_create_application_agent(**kwargs):
-        captured["available_file_paths"] = kwargs.get("available_file_paths")
-        return _FakeAgent()
+    async def _fake_run_application_with_skyvern(**kwargs):
+        captured.update(kwargs)
+        run_dir = Path(str(kwargs["run_dir"]))
+        result = ApplicationRunResult(
+            success=True,
+            status=RunStatus.SKIPPED,
+            notes=["fake-run"],
+        )
+        result.save_json(run_dir / "application_result.json")
+        return result
 
     monkeypatch.setattr(
-        "src.runner.agent.get_runner_llm",
-        lambda _settings: object(),
-        raising=False,
-    )
-
-    def _fake_create_browser(_settings, prohibited_domains=None):
-        _ = prohibited_domains
-        return _FakeBrowser()
-
-    monkeypatch.setattr(
-        "src.runner.agent.create_browser",
-        _fake_create_browser,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "src.runner.agent.create_application_agent",
-        _fake_create_application_agent,
-        raising=False,
-    )
-
-    def _fake_create_hitl_tools(auto_submit=False):
-        _ = auto_submit
-        return object()
-
-    monkeypatch.setattr(
-        "src.hitl.tools.create_hitl_tools",
-        _fake_create_hitl_tools,
+        "src.runner.skyvern_runner.run_application_with_skyvern",
+        _fake_run_application_with_skyvern,
         raising=False,
     )
 
@@ -831,13 +792,6 @@ def test_cli_apply_mode_parses_json_with_trailing_text(monkeypatch, tmp_path) ->
     assert exit_code == 0
     result_path = run_dir / "application_result.json"
     assert result_path.exists()
-
-    payload = json.loads(result_path.read_text(encoding="utf-8"))
-    assert payload["success"] is True
-    assert payload["status"] == "skipped"
-    assert payload["proof_screenshot_path"] == str(run_dir / "proof.png")
-
-    available_file_paths = captured["available_file_paths"]
-    assert isinstance(available_file_paths, list)
-    assert "resume.pdf" in available_file_paths
-    assert str(resume_path.resolve()) in available_file_paths
+    assert captured["job_url"] == "https://example.com/jobs/123"
+    assert captured["resume_path"] == "resume.pdf"
+    assert captured["run_dir"] == run_dir

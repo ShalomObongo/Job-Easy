@@ -6,13 +6,13 @@ its Browser Use agent integration (`output_model_schema` / `history.structured_o
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
 
-class RunStatus(str, Enum):
+class RunStatus(StrEnum):
     """High-level status for a single application run."""
 
     SUBMITTED = "submitted"

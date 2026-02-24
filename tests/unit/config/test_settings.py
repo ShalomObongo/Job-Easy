@@ -36,6 +36,25 @@ class TestSettingsDefaults:
             "RUNNER_LLM_BASE_URL",
             "RUNNER_LLM_MODEL",
             "RUNNER_LLM_REASONING_EFFORT",
+            "RUNNER_BACKEND",
+            "RUNNER_SKYVERN_BASE_URL",
+            "RUNNER_SKYVERN_API_KEY",
+            "RUNNER_SKYVERN_TIMEOUT_SECONDS",
+            "RUNNER_SKYVERN_POLL_INTERVAL_SECONDS",
+            "RUNNER_SKYVERN_MAX_WAIT_SECONDS",
+            "RUNNER_SKYVERN_ENFORCE_LOCAL",
+            "RUNNER_SKYVERN_VERIFY_HEALTH",
+            "RUNNER_SKYVERN_ENV_OVERRIDES",
+            "RUNNER_SKYVERN_WORKFLOW_ID",
+            "RUNNER_SKYVERN_BROWSER_PROFILE_ID",
+            "RUNNER_SKYVERN_BROWSER_SESSION_ID",
+            "RUNNER_SKYVERN_BROWSER_ADDRESS",
+            "RUNNER_SKYVERN_BROWSER_PATH",
+            "RUNNER_SKYVERN_PERSIST_BROWSER_SESSION",
+            "RUNNER_SKYVERN_PROFILE_BOOTSTRAP_WORKFLOW_ID",
+            "RUNNER_SKYVERN_PROFILE_NAME",
+            "RUNNER_SKYVERN_PROFILE_CREATE_RETRIES",
+            "RUNNER_SKYVERN_PROFILE_CREATE_RETRY_DELAY_SECONDS",
         ]
         original_values = {}
         for var in env_vars_to_clear:
@@ -70,6 +89,25 @@ class TestSettingsDefaults:
             assert settings.runner_llm_base_url is None
             assert settings.runner_llm_model is None
             assert settings.runner_llm_reasoning_effort is None
+            assert settings.runner_backend == "skyvern_local"
+            assert settings.runner_skyvern_base_url == "http://localhost:8000"
+            assert settings.runner_skyvern_api_key is None
+            assert settings.runner_skyvern_timeout_seconds == 15
+            assert settings.runner_skyvern_poll_interval_seconds == 1.5
+            assert settings.runner_skyvern_max_wait_seconds == 900
+            assert settings.runner_skyvern_enforce_local is True
+            assert settings.runner_skyvern_verify_health is True
+            assert settings.runner_skyvern_env_overrides is None
+            assert settings.runner_skyvern_workflow_id is None
+            assert settings.runner_skyvern_browser_profile_id is None
+            assert settings.runner_skyvern_browser_session_id is None
+            assert settings.runner_skyvern_browser_address is None
+            assert settings.runner_skyvern_browser_path is None
+            assert settings.runner_skyvern_persist_browser_session is False
+            assert settings.runner_skyvern_profile_bootstrap_workflow_id is None
+            assert settings.runner_skyvern_profile_name == "job-easy-profile"
+            assert settings.runner_skyvern_profile_create_retries == 10
+            assert settings.runner_skyvern_profile_create_retry_delay_seconds == 1.0
         finally:
             # Restore env vars
             for var, value in original_values.items():

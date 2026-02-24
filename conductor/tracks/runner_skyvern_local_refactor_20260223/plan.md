@@ -75,22 +75,22 @@
     - [x] Validate dry-run mode remains tailoring-only
 
 ## Phase 5: Tests and Reliability Verification
-- [ ] Task: Add/refresh unit tests for new runner architecture
-    - [ ] Skyvern client request/response mapping tests
-    - [ ] Service orchestration tests for success/skip/failure/blocked cases
-    - [ ] CLI runner mode tests (`single`, `apply`) for Skyvern path
-    - [ ] Legacy env compatibility tests for `RUNNER_LLM_*` -> Skyvern config mapping
-- [ ] Task: Add integration tests with controllable Skyvern endpoint stubs
-    - [ ] Task lifecycle polling behavior
-    - [ ] Artifact persistence behavior
-    - [ ] Failure-mode diagnostics
-    - [ ] Delayed browser-profile archive upload (400 persisted-not-ready) retry behavior
-    - [ ] Browser profile restore failure fallback path
-    - [ ] End-to-end smoke with `RUNNER_LLM_BASE_URL` + `RUNNER_LLM_MODEL` OpenAI-compatible local backend
-- [ ] Task: Run quality gates
-    - [ ] `ruff check .`
-    - [ ] targeted `pytest` for runner/autonomous/cli modules
-    - [ ] expanded regression run for related modules
+- [x] Task: Add/refresh unit tests for new runner architecture
+    - [x] Skyvern client request/response mapping tests
+    - [x] Service orchestration tests for success/skip/failure/blocked cases
+    - [x] CLI runner mode tests (`single`, `apply`) for Skyvern path
+    - [x] Legacy env compatibility tests for `RUNNER_LLM_*` -> Skyvern config mapping
+- [x] Task: Add integration tests with controllable Skyvern endpoint stubs
+    - [x] Task lifecycle polling behavior
+    - [x] Artifact persistence behavior
+    - [x] Failure-mode diagnostics
+    - [x] Delayed browser-profile archive upload (400 persisted-not-ready) retry behavior
+    - [x] Browser profile restore failure fallback path
+    - [x] End-to-end smoke with `RUNNER_LLM_BASE_URL` + `RUNNER_LLM_MODEL` OpenAI-compatible local backend
+- [x] Task: Run quality gates
+    - [x] `ruff check .`
+    - [x] targeted `pytest` for runner/autonomous/cli modules
+    - [x] expanded regression run for related modules
 
 ## Phase 6: Rollout, Documentation, and Cleanup
 - [ ] Task: Update docs for local Skyvern runner operations

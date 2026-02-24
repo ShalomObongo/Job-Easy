@@ -12,7 +12,6 @@ import asyncio
 import contextlib
 import json
 import logging
-import re
 from pathlib import Path
 from typing import Literal
 
@@ -481,7 +480,9 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
             candidates.append(compact)
 
         if "bachelor" in compact and "degree" not in compact:
-            candidates.extend(["Bachelor's Degree", "Bachelors Degree", "Bachelor Degree"])
+            candidates.extend(
+                ["Bachelor's Degree", "Bachelors Degree", "Bachelor Degree"]
+            )
         if "master" in compact and "degree" not in compact:
             candidates.extend(["Master's Degree", "Masters Degree", "Master Degree"])
         if "doctor" in compact and "degree" not in compact:
@@ -812,7 +813,9 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
                 await asyncio.sleep(0.12)
 
         try:
-            event = browser_session.event_bus.dispatch(GetDropdownOptionsEvent(node=node))
+            event = browser_session.event_bus.dispatch(
+                GetDropdownOptionsEvent(node=node)
+            )
             dropdown_data = await event.event_result(timeout=3.0)
 
             if isinstance(dropdown_data, dict):
@@ -821,7 +824,8 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
                 if short_term:
                     return ActionResult(
                         extracted_content=short_term,
-                        long_term_memory=long_term or f"Got dropdown options for index {index}",
+                        long_term_memory=long_term
+                        or f"Got dropdown options for index {index}",
                         include_extracted_content_only_once=True,
                     )
         except Exception as exc:
@@ -835,8 +839,11 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
         options = await _extract_visible_combobox_options(element)
         if options:
             lines = [
-                f'Found dropdown options for index {index}:',
-                *[f'{i}: text={json.dumps(option)}' for i, option in enumerate(options)],
+                f"Found dropdown options for index {index}:",
+                *[
+                    f"{i}: text={json.dumps(option)}"
+                    for i, option in enumerate(options)
+                ],
                 "",
                 f"Use select_dropdown(index={index}, text=...) with exact option text.",
             ]
@@ -931,7 +938,10 @@ def create_hitl_tools(*, auto_submit: bool = False) -> Tools:
                 logger.warning("select_dropdown event failed: %s", exc)
                 selection_data = None
 
-            if isinstance(selection_data, dict) and selection_data.get("success") == "true":
+            if (
+                isinstance(selection_data, dict)
+                and selection_data.get("success") == "true"
+            ):
                 chosen_text = candidate
                 break
 

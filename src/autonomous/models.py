@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, is_dataclass
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
 
 from src.extractor.models import JobDescription
@@ -51,7 +51,7 @@ class LeadItem:
         return _jsonable(self)
 
 
-class QueueStatus(str, Enum):
+class QueueStatus(StrEnum):
     """Processing status for a queued job."""
 
     PENDING = "pending"

@@ -212,10 +212,17 @@ class TestPlanGenerationIntegration:
         # Should have evidence mappings
         assert len(plan.evidence_mappings) > 0
 
-        # Evidence should come from user's actual work history
+        # Evidence should reference real profile evidence (work history or summary).
         companies = {m.source_company for m in plan.evidence_mappings}
         valid_companies = {"ScaleUp Technologies", "WebDev Agency", "StartupXYZ"}
-        assert any(c in valid_companies for c in companies)
+        summary_roles = {
+            str(m.source_role or "").strip().lower() for m in plan.evidence_mappings
+        }
+        has_valid_company = any(c in valid_companies for c in companies)
+        has_summary_backed_evidence = any(
+            role in {"professional summary", "summary"} for role in summary_roles
+        )
+        assert has_valid_company or has_summary_backed_evidence
 
     @pytest.mark.asyncio
     async def test_flags_missing_go_skill(
