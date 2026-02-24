@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.request import urlopen
 
 import pytest
 
@@ -270,6 +271,66 @@ async def test_run_application_with_skyvern_handles_timeout(
 
     assert result.status == RunStatus.FAILED
     assert any("timed out" in err for err in result.errors)
+
+
+def test_prepare_upload_references_serves_local_files(tmp_path: Path) -> None:
+    from src.runner.skyvern_runner import _prepare_upload_references
+
+    resume = tmp_path / "resume.pdf"
+    resume.write_bytes(b"%PDF-1.4\\nresume\\n")
+
+    with _prepare_upload_references(
+        resume_path=str(resume),
+        cover_letter_path=None,
+    ) as refs:
+        assert refs.resume_path is not None
+        assert refs.resume_path.startswith("http://127.0.0.1:")
+        assert refs.available_file_paths == [refs.resume_path]
+        with urlopen(refs.resume_path, timeout=2) as response:
+            assert response.read() == b"%PDF-1.4\\nresume\\n"
+
+
+@pytest.mark.asyncio
+async def test_run_application_with_skyvern_uses_served_upload_url_in_prompt(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from src.runner.skyvern_runner import run_application_with_skyvern
+
+    captured: dict[str, object] = {}
+
+    class _CaptureClient(_HealthyClient):
+        async def run_task(self, **kwargs):
+            captured.update(kwargs)
+            return await super().run_task(**kwargs)
+
+    monkeypatch.setattr(
+        "src.runner.skyvern_runner.resolve_runner_skyvern_config",
+        lambda _settings: _config(),
+    )
+    monkeypatch.setattr("src.runner.skyvern_runner.SkyvernSDKClient", _CaptureClient)
+    monkeypatch.setattr(
+        "src.runner.skyvern_runner.resolve_browser_profile",
+        _fake_profile_resolution,
+    )
+
+    resume = tmp_path / "resume.pdf"
+    resume.write_bytes(b"%PDF-1.4\\nresume\\n")
+
+    result = await run_application_with_skyvern(
+        settings=_settings(tmp_path),
+        job_url="https://example.com/apply",
+        run_dir=tmp_path / "run6",
+        profile=None,
+        resume_path=str(resume),
+        cover_letter_path=None,
+        auto_submit=False,
+    )
+
+    assert result.status == RunStatus.STOPPED_BEFORE_SUBMIT
+    prompt = str(captured.get("prompt", ""))
+    assert "Available files:" in prompt
+    assert "- Resume: http://127.0.0.1:" in prompt
+    assert str(resume) not in prompt
 
 
 async def _fake_profile_resolution(**kwargs):

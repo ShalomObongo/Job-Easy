@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import os
+from dataclasses import replace
 from importlib import import_module
 from types import ModuleType
 from typing import Any
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
-from src.runner.skyvern_config import SkyvernRunnerConfig
+from src.runner.skyvern_config import SkyvernRunnerConfig, is_local_skyvern_url
 
 
 class SkyvernSDKError(RuntimeError):
@@ -30,7 +32,17 @@ class SkyvernSDKClient:
         method = getattr(self._client, "run_task", None)
         if method is None:
             raise SkyvernSDKError("Skyvern SDK client has no run_task method.")
-        return await _call_compatible(method, kwargs)
+        try:
+            return await _call_compatible(method, kwargs)
+        except Exception as exc:
+            if await self._maybe_recover_local_auth(exc):
+                method = getattr(self._client, "run_task", None)
+                if method is None:
+                    raise SkyvernSDKError(
+                        "Skyvern SDK client has no run_task method after auth repair."
+                    ) from exc
+                return await _call_compatible(method, kwargs)
+            raise SkyvernSDKError(f"Skyvern run_task failed: {exc}") from exc
 
     async def run_workflow(self, *, workflow_id: str, data: dict[str, Any]) -> Any:
         """Run a Skyvern workflow through SDK workflow APIs."""
@@ -43,7 +55,18 @@ class SkyvernSDKClient:
             "data": data,
             "wait_for_completion": True,
         }
-        return await _call_compatible(method, kwargs)
+        try:
+            return await _call_compatible(method, kwargs)
+        except Exception as exc:
+            if await self._maybe_recover_local_auth(exc):
+                workflows = getattr(self._client, "workflows", None)
+                method = getattr(workflows, "run_workflow", None) if workflows else None
+                if method is None:
+                    raise SkyvernSDKError(
+                        "Skyvern SDK client has no workflows.run_workflow after auth repair."
+                    ) from exc
+                return await _call_compatible(method, kwargs)
+            raise SkyvernSDKError(f"Skyvern run_workflow failed: {exc}") from exc
 
     async def get_workflow_run(self, *, workflow_run_id: str) -> Any:
         """Fetch a workflow run by ID if supported by current SDK."""
@@ -82,7 +105,8 @@ class SkyvernSDKClient:
     async def check_health(self) -> None:
         """Probe local Skyvern HTTP health endpoints."""
         base_url = self._config.base_url.rstrip("/")
-        paths = ("/health", "/api/v1/health", "/api/health")
+        legacy_paths = ("/health", "/api/v1/health", "/api/health")
+        sdk_paths = ("/openapi.json", "/docs")
 
         async def _probe(path: str) -> bool:
             target = urljoin(f"{base_url}/", path.lstrip("/"))
@@ -97,13 +121,17 @@ class SkyvernSDKClient:
             except Exception:
                 return False
 
-        for path in paths:
+        for path in legacy_paths:
+            if await _probe(path):
+                return
+
+        for path in sdk_paths:
             if await _probe(path):
                 return
 
         raise SkyvernSDKError(
             "Unable to reach local Skyvern service. "
-            f"Checked {', '.join(paths)} at {base_url}. "
+            f"Checked {', '.join((*legacy_paths, *sdk_paths))} at {base_url}. "
             "Start Skyvern locally and verify RUNNER_SKYVERN_BASE_URL."
         )
 
@@ -236,6 +264,51 @@ class SkyvernSDKClient:
                 f"Failed to initialize Skyvern client: {exc}"
             ) from exc
 
+    async def _maybe_recover_local_auth(self, exc: Exception) -> bool:
+        if not is_local_skyvern_url(self._config.base_url):
+            return False
+        if not _looks_like_auth_error(exc):
+            return False
+
+        api_key = await self._repair_local_auth()
+        if not api_key:
+            return False
+
+        try:
+            new_config = replace(self._config, api_key=api_key)
+            self._client = self._build_client(new_config)
+            self._config = new_config
+            return True
+        except Exception:
+            return False
+
+    async def _repair_local_auth(self) -> str | None:
+        base_url = self._config.base_url.rstrip("/")
+        repair_paths = ("/v1/internal/auth/repair", "/internal/auth/repair")
+
+        def _attempt(path: str) -> str | None:
+            target = urljoin(f"{base_url}/", path.lstrip("/"))
+            request = Request(target, method="POST")
+            with urlopen(request, timeout=self._config.timeout_seconds) as resp:
+                raw_body = resp.read()
+                if not raw_body:
+                    return None
+                payload = json.loads(raw_body.decode("utf-8"))
+                api_key = payload.get("api_key")
+                if isinstance(api_key, str) and api_key.strip():
+                    return api_key.strip()
+            return None
+
+        for path in repair_paths:
+            try:
+                repaired = await asyncio.to_thread(_attempt, path)
+            except Exception:
+                continue
+            if repaired:
+                os.environ["SKYVERN_API_KEY"] = repaired
+                return repaired
+        return None
+
 
 def _import_skyvern_module() -> ModuleType:
     try:
@@ -290,3 +363,14 @@ def _plainify_json_value(value: Any) -> Any:
             if not key.startswith("_")
         }
     return str(value)
+
+
+def _looks_like_auth_error(exc: Exception) -> bool:
+    text = str(exc).strip().lower()
+    auth_markers = (
+        "could not validate credentials",
+        "invalid credentials",
+        "auth token is expired",
+        "403",
+    )
+    return any(marker in text for marker in auth_markers)

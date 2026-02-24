@@ -224,3 +224,43 @@ class TestBrowserUseTempDirCleanup:
         extractor._cleanup_browser_use_temp_profile(dummy_browser)
 
         assert not temp_dir.exists()
+
+
+class _HistoryWithTrailingText:
+    @property
+    def structured_output(self):
+        raise ValueError("Invalid output")
+
+    def final_result(self):
+        return (
+            '{"company":"Canonical","role_title":"Graduate Software Engineer",'
+            '"job_url":"https://job-boards.greenhouse.io/canonical/jobs/7522509"}'
+            "\nJudge note: metadata check incomplete."
+        )
+
+
+def test_parse_history_output_with_trailing_text_returns_job_description() -> None:
+    from src.extractor.config import ExtractorConfig
+    from src.extractor.service import JobExtractor
+
+    extractor = JobExtractor(config=ExtractorConfig(_env_file=None))
+    parsed = extractor._parse_history_output(_HistoryWithTrailingText())
+
+    assert parsed is not None
+    assert parsed.company == "Canonical"
+    assert parsed.role_title == "Graduate Software Engineer"
+
+
+def test_extract_first_json_object_ignores_non_json_preamble_and_suffix() -> None:
+    from src.extractor.config import ExtractorConfig
+    from src.extractor.service import JobExtractor
+
+    extractor = JobExtractor(config=ExtractorConfig(_env_file=None))
+    payload = extractor._extract_first_json_object(
+        "not-json\n\n"
+        '{"company":"Acme","role_title":"Engineer","job_url":"https://example.com/job/1"}'
+        "\nextra-text"
+    )
+
+    assert payload is not None
+    assert payload["company"] == "Acme"

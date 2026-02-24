@@ -105,3 +105,34 @@
 - [x] Task: Manual verification checkpoint
     - [x] Validate at least one real application-form smoke path in local environment
     - [x] Capture artifacts and final migration notes in track folder
+
+## Phase 7: Upload Reliability Hotfix (Post-Cutover)
+- [x] Task: Research Skyvern upload transport contract and constraints
+    - [x] Validate docs/context references for task/workflow upload behavior
+    - [x] Validate local installed Skyvern source for `file_url` handling
+- [x] Task: Implement local upload URL bridge for Skyvern runner
+    - [x] Serve whitelisted resume/cover files from a loopback HTTP endpoint during run execution
+    - [x] Route prompt/workflow file references to served URLs instead of raw filesystem paths
+    - [x] Preserve fallback behavior when no local files are provided
+- [x] Task: Add focused tests for upload reliability
+    - [x] Unit test local upload server references and payload retrieval
+    - [x] Unit test prompt formatting preserves HTTP upload references
+    - [x] Unit test runner prompt uses served upload URL pathing
+- [ ] Task: Re-verify end-to-end Canonical application smoke in YOLO + auto-submit mode
+    - [ ] Confirm no `InvalidUrlClientError` during resume/cover upload
+    - [ ] Capture run artifacts and logs
+
+## Phase 8: Browser Stability and Alternate E2E Verification
+- [x] Task: Stabilize local Skyvern headful browser window geometry
+    - [x] Add local startup wrapper to detect laptop screen bounds and set `BROWSER_WIDTH` / `BROWSER_HEIGHT`
+    - [x] Inject explicit browser args (`--window-position`, `--window-size`, `--force-device-scale-factor`)
+    - [x] Verify launched Skyvern Chromium process includes explicit sizing args
+    - [x] Verify live window bounds match laptop display size class
+- [x] Task: Prevent missing-dropdown value loops in runner prompt
+    - [x] Add explicit fallback rule for required dropdown/combobox values when exact option is unavailable
+    - [x] Instruct Skyvern to continue after one truthful fallback instead of retry looping
+- [x] Task: Validate alternate full E2E application flow with tailored docs
+    - [x] Generate Turaco-specific tailored resume and cover letter
+    - [x] Execute Turaco YOLO + auto-submit run using tailored docs
+    - [x] Confirm terminal `submitted` status with no action errors
+    - [x] Confirm resume and cover-letter uploads include non-null `file_url` references

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 import shutil
@@ -119,10 +120,8 @@ class JobExtractor:
             # Run the agent
             history = await agent.run()
 
-            # Get structured output
-            if history and history.structured_output:
-                result = history.structured_output
-                # Ensure job_url is set
+            result = self._parse_history_output(history=history)
+            if result is not None:
                 if not result.job_url:
                     result.job_url = url
                 return result
@@ -172,6 +171,64 @@ class JobExtractor:
 
         with contextlib.suppress(Exception):
             shutil.rmtree(user_data_path, ignore_errors=True)
+
+    def _parse_history_output(self, history: object | None) -> JobDescription | None:
+        """Parse structured output from Browser Use history with fallbacks.
+
+        Browser Use can occasionally return JSON followed by judge text in the same
+        payload. This method first attempts native structured parsing and then falls
+        back to extracting and validating the first JSON object in the final result.
+        """
+        if history is None:
+            return None
+
+        with contextlib.suppress(Exception):
+            structured = getattr(history, "structured_output", None)
+            if structured is not None:
+                return structured
+
+        with contextlib.suppress(Exception):
+            getter = getattr(history, "get_structured_output", None)
+            if callable(getter):
+                structured = getter(JobDescription)
+                if structured is not None:
+                    return structured
+
+        final_result = self._history_final_result_text(history)
+        if not final_result:
+            return None
+
+        payload = self._extract_first_json_object(final_result)
+        if payload is None:
+            return None
+
+        with contextlib.suppress(Exception):
+            return JobDescription.model_validate(payload)
+        return None
+
+    def _history_final_result_text(self, history: object) -> str | None:
+        with contextlib.suppress(Exception):
+            final_result_getter = getattr(history, "final_result", None)
+            if callable(final_result_getter):
+                value = final_result_getter()
+                if isinstance(value, str) and value.strip():
+                    return value
+        with contextlib.suppress(Exception):
+            value = getattr(history, "final_result", None)
+            if isinstance(value, str) and value.strip():
+                return value
+        return None
+
+    def _extract_first_json_object(self, text: str) -> dict[str, object] | None:
+        decoder = json.JSONDecoder()
+        for idx, char in enumerate(text):
+            if char != "{":
+                continue
+            with contextlib.suppress(json.JSONDecodeError):
+                parsed, _ = decoder.raw_decode(text[idx:])
+                if isinstance(parsed, dict):
+                    return parsed
+        return None
 
     def _get_llm(self):
         """Get the LLM instance for extraction.

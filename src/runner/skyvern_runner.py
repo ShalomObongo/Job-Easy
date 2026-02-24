@@ -5,7 +5,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import mimetypes
+import secrets
+from dataclasses import dataclass
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from typing import Any
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -77,6 +83,176 @@ def expand_upload_paths(paths: list[str | Path | None]) -> list[str]:
     return expanded
 
 
+@dataclass
+class _UploadReferences:
+    resume_path: str | None
+    cover_letter_path: str | None
+    available_file_paths: list[str]
+    notes: list[str]
+
+
+class _LocalUploadFileServer:
+    """Serve local upload artifacts over loopback HTTP for Skyvern file fetching."""
+
+    def __init__(self, files: list[Path]) -> None:
+        unique_files: list[Path] = []
+        seen: set[Path] = set()
+        for path in files:
+            resolved = path.expanduser().resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            unique_files.append(resolved)
+
+        self._files = unique_files
+        self._token_to_path = {secrets.token_urlsafe(16): path for path in self._files}
+        self._url_by_path: dict[Path, str] = {}
+        self._server: ThreadingHTTPServer | None = None
+        self._thread: Thread | None = None
+
+    def start(self) -> None:
+        if self._server is not None:
+            return
+
+        handler_cls = self._build_handler()
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
+        server.daemon_threads = True
+        thread = Thread(
+            target=server.serve_forever,
+            name="skyvern-upload-file-server",
+            daemon=True,
+        )
+        thread.start()
+
+        self._server = server
+        self._thread = thread
+
+        host, port = server.server_address[:2]
+        for token, path in self._token_to_path.items():
+            self._url_by_path[path] = f"http://{host}:{port}/files/{token}/{path.name}"
+
+    def stop(self) -> None:
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+            self._server = None
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            self._thread = None
+
+    def url_for(self, path: Path) -> str | None:
+        resolved = path.expanduser().resolve()
+        return self._url_by_path.get(resolved)
+
+    def _build_handler(self) -> type[BaseHTTPRequestHandler]:
+        token_to_path = dict(self._token_to_path)
+
+        class UploadHandler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                parts = urlparse(self.path).path.split("/")
+                if len(parts) < 4 or parts[1] != "files":
+                    self.send_error(HTTPStatus.NOT_FOUND)
+                    return
+
+                token = parts[2]
+                file_path = token_to_path.get(token)
+                if file_path is None or not file_path.exists():
+                    self.send_error(HTTPStatus.NOT_FOUND)
+                    return
+
+                try:
+                    payload = file_path.read_bytes()
+                except OSError:
+                    self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR)
+                    return
+
+                content_type = (
+                    mimetypes.guess_type(file_path.name)[0]
+                    or "application/octet-stream"
+                )
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(payload)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, fmt: str, *args: Any) -> None:
+                _ = (fmt, args)
+
+        return UploadHandler
+
+
+def _resolve_existing_file_path(raw: str | None) -> Path | None:
+    if raw is None:
+        return None
+    raw_str = str(raw).strip()
+    if not raw_str:
+        return None
+    candidate = Path(raw_str).expanduser()
+    with contextlib.suppress(Exception):
+        candidate = candidate.resolve()
+    if not candidate.exists() or not candidate.is_file():
+        return None
+    return candidate
+
+
+@contextlib.contextmanager
+def _prepare_upload_references(
+    *,
+    resume_path: str | None,
+    cover_letter_path: str | None,
+) -> Any:
+    resolved_resume = _resolve_existing_file_path(resume_path)
+    resolved_cover = _resolve_existing_file_path(cover_letter_path)
+    server_files = [
+        path for path in (resolved_resume, resolved_cover) if path is not None
+    ]
+
+    if not server_files:
+        yield _UploadReferences(
+            resume_path=resume_path,
+            cover_letter_path=cover_letter_path,
+            available_file_paths=expand_upload_paths([resume_path, cover_letter_path]),
+            notes=[],
+        )
+        return
+
+    server = _LocalUploadFileServer(server_files)
+    server.start()
+    try:
+        served_resume = (
+            server.url_for(resolved_resume)
+            if resolved_resume is not None
+            else resume_path
+        )
+        served_cover = (
+            server.url_for(resolved_cover)
+            if resolved_cover is not None
+            else cover_letter_path
+        )
+        available_paths = [
+            candidate
+            for candidate in (served_resume, served_cover)
+            if isinstance(candidate, str) and candidate.strip()
+        ]
+        server_origin = None
+        for value in available_paths:
+            parsed = urlparse(value)
+            if parsed.scheme in {"http", "https"} and parsed.netloc:
+                server_origin = f"{parsed.scheme}://{parsed.netloc}"
+                break
+        notes = [f"skyvern_upload_server={server_origin}"] if server_origin else []
+        yield _UploadReferences(
+            resume_path=served_resume,
+            cover_letter_path=served_cover,
+            available_file_paths=available_paths,
+            notes=notes,
+        )
+    finally:
+        server.stop()
+
+
 async def run_application_with_skyvern(
     *,
     settings: Any,
@@ -130,18 +306,7 @@ async def run_application_with_skyvern(
     if yolo_mode and yolo_context is None and job is not None and profile is not None:
         yolo_context = build_yolo_context(job=job, profile=profile)
 
-    prompt = build_runner_prompt(
-        job_url=job_url,
-        profile=profile,
-        resume_path=resume_path,
-        cover_letter_path=cover_letter_path,
-        yolo_mode=yolo_mode,
-        yolo_context=yolo_context,
-        auto_submit=auto_submit,
-    )
     extraction_schema = build_data_extraction_schema()
-
-    available_files = expand_upload_paths([resume_path, cover_letter_path])
     notes: list[str] = []
     if qa_scope_hints:
         notes.append(
@@ -149,24 +314,65 @@ async def run_application_with_skyvern(
             + ",".join(f"{scope}:{value or ''}" for scope, value in qa_scope_hints)
         )
 
-    with temporary_env_overrides(config.llm_env_overrides):
-        try:
-            client = SkyvernSDKClient(config=config)
-        except Exception as exc:
-            result = ApplicationRunResult(
-                success=False,
-                status=RunStatus.FAILED,
-                errors=[str(exc)],
-                notes=notes + config.llm_mapping_notes,
-            )
-            with contextlib.suppress(Exception):
-                result.save_json(result_path)
-            return result
+    client: SkyvernSDKClient
+    run_response: Any
+    with _prepare_upload_references(
+        resume_path=resume_path,
+        cover_letter_path=cover_letter_path,
+    ) as upload_refs:
+        notes.extend(upload_refs.notes)
+        prompt = build_runner_prompt(
+            job_url=job_url,
+            profile=profile,
+            resume_path=upload_refs.resume_path,
+            cover_letter_path=upload_refs.cover_letter_path,
+            yolo_mode=yolo_mode,
+            yolo_context=yolo_context,
+            auto_submit=auto_submit,
+        )
 
-        if config.verify_health:
+        with temporary_env_overrides(config.llm_env_overrides):
             try:
-                await client.check_health()
-            except SkyvernSDKError as exc:
+                client = SkyvernSDKClient(config=config)
+            except Exception as exc:
+                result = ApplicationRunResult(
+                    success=False,
+                    status=RunStatus.FAILED,
+                    errors=[str(exc)],
+                    notes=notes + config.llm_mapping_notes,
+                )
+                with contextlib.suppress(Exception):
+                    result.save_json(result_path)
+                return result
+
+            if config.verify_health:
+                try:
+                    await client.check_health()
+                except SkyvernSDKError as exc:
+                    result = ApplicationRunResult(
+                        success=False,
+                        status=RunStatus.FAILED,
+                        errors=[str(exc)],
+                    )
+                    with contextlib.suppress(Exception):
+                        result.save_json(result_path)
+                    return result
+
+            bootstrap_data = build_workflow_data(
+                prompt=prompt,
+                job=job,
+                profile=profile,
+                resume_path=upload_refs.resume_path,
+                cover_letter_path=upload_refs.cover_letter_path,
+            )
+            try:
+                profile_resolution = await resolve_browser_profile(
+                    config=config,
+                    client=client,
+                    bootstrap_data=bootstrap_data,
+                )
+                notes.extend(profile_resolution.notes)
+            except SkyvernProfileError as exc:
                 result = ApplicationRunResult(
                     success=False,
                     status=RunStatus.FAILED,
@@ -176,120 +382,97 @@ async def run_application_with_skyvern(
                     result.save_json(result_path)
                 return result
 
-        bootstrap_data = build_workflow_data(
-            prompt=prompt,
-            job=job,
-            profile=profile,
-            resume_path=resume_path,
-            cover_letter_path=cover_letter_path,
-        )
-        try:
-            profile_resolution = await resolve_browser_profile(
-                config=config,
-                client=client,
-                bootstrap_data=bootstrap_data,
-            )
-            notes.extend(profile_resolution.notes)
-        except SkyvernProfileError as exc:
-            result = ApplicationRunResult(
-                success=False,
-                status=RunStatus.FAILED,
-                errors=[str(exc)],
-            )
-            with contextlib.suppress(Exception):
-                result.save_json(result_path)
-            return result
+            browser_profile_id = profile_resolution.browser_profile_id
 
-        browser_profile_id = profile_resolution.browser_profile_id
-
-        run_response: Any
-        try:
-            if config.workflow_id:
-                workflow_data = build_workflow_data(
-                    prompt=prompt,
-                    job=job,
-                    profile=profile,
-                    resume_path=resume_path,
-                    cover_letter_path=cover_letter_path,
-                )
-                if browser_profile_id:
-                    workflow_data["browser_profile_id"] = browser_profile_id
-                if config.browser_session_id:
-                    workflow_data["browser_session_id"] = config.browser_session_id
-                if config.browser_address:
-                    workflow_data["browser_address"] = config.browser_address
-                if available_files:
-                    workflow_data["available_file_paths"] = available_files
-                run_response = await asyncio.wait_for(
-                    client.run_workflow(
-                        workflow_id=config.workflow_id,
-                        data=workflow_data,
-                    ),
-                    timeout=config.max_wait_seconds,
-                )
-                notes.append(f"skyvern_workflow_id={config.workflow_id}")
-            else:
-                run_task_kwargs: dict[str, Any] = {
-                    "prompt": prompt,
-                    "url": job_url,
-                    "wait_for_completion": True,
-                    "data_extraction_schema": extraction_schema,
-                    "max_steps": getattr(settings, "runner_max_actions_per_step", 4)
-                    * 8,
-                    "browser_profile_id": browser_profile_id,
-                    "browser_session_id": config.browser_session_id,
-                    "browser_address": config.browser_address,
-                    "persist_browser_session": config.persist_browser_session,
-                    "error_code_mapping": {
-                        "otp_required_non_interactive": (
-                            "OTP/CAPTCHA required and cannot be bypassed."
+            try:
+                if config.workflow_id:
+                    workflow_data = build_workflow_data(
+                        prompt=prompt,
+                        job=job,
+                        profile=profile,
+                        resume_path=upload_refs.resume_path,
+                        cover_letter_path=upload_refs.cover_letter_path,
+                    )
+                    if browser_profile_id:
+                        workflow_data["browser_profile_id"] = browser_profile_id
+                    if config.browser_session_id:
+                        workflow_data["browser_session_id"] = config.browser_session_id
+                    if config.browser_address:
+                        workflow_data["browser_address"] = config.browser_address
+                    if upload_refs.available_file_paths:
+                        workflow_data["available_file_paths"] = (
+                            upload_refs.available_file_paths
+                        )
+                    run_response = await asyncio.wait_for(
+                        client.run_workflow(
+                            workflow_id=config.workflow_id,
+                            data=workflow_data,
                         ),
-                        "unknown_required_question": (
-                            "Required question lacked a known truthful answer."
-                        ),
-                    },
-                }
-                run_response = await asyncio.wait_for(
-                    client.run_task(**run_task_kwargs),
-                    timeout=config.max_wait_seconds,
+                        timeout=config.max_wait_seconds,
+                    )
+                    notes.append(f"skyvern_workflow_id={config.workflow_id}")
+                else:
+                    run_task_kwargs: dict[str, Any] = {
+                        "prompt": prompt,
+                        "url": job_url,
+                        "wait_for_completion": True,
+                        "data_extraction_schema": extraction_schema,
+                        "max_steps": getattr(settings, "runner_max_actions_per_step", 4)
+                        * 8,
+                        "browser_profile_id": browser_profile_id,
+                        "browser_session_id": config.browser_session_id,
+                        "browser_address": config.browser_address,
+                        "persist_browser_session": config.persist_browser_session,
+                        "error_code_mapping": {
+                            "otp_required_non_interactive": (
+                                "OTP/CAPTCHA required and cannot be bypassed."
+                            ),
+                            "unknown_required_question": (
+                                "Required question lacked a known truthful answer."
+                            ),
+                        },
+                    }
+                    run_response = await asyncio.wait_for(
+                        client.run_task(**run_task_kwargs),
+                        timeout=config.max_wait_seconds,
+                    )
+                    notes.append(
+                        "skyvern_wait_policy="
+                        f"max_wait={config.max_wait_seconds}s poll={config.poll_interval_seconds}s"
+                    )
+            except TimeoutError:
+                result = ApplicationRunResult(
+                    success=False,
+                    status=RunStatus.FAILED,
+                    errors=[
+                        "Skyvern run timed out before reaching a terminal state. "
+                        f"Increase RUNNER_SKYVERN_MAX_WAIT_SECONDS (current={config.max_wait_seconds})."
+                    ],
+                    notes=notes + config.llm_mapping_notes,
                 )
-                notes.append(
-                    "skyvern_wait_policy="
-                    f"max_wait={config.max_wait_seconds}s poll={config.poll_interval_seconds}s"
+                with contextlib.suppress(Exception):
+                    result.save_json(result_path)
+                return result
+            except SkyvernSDKError as exc:
+                result = ApplicationRunResult(
+                    success=False,
+                    status=RunStatus.FAILED,
+                    errors=[str(exc)],
+                    notes=notes + config.llm_mapping_notes,
                 )
-        except TimeoutError:
-            result = ApplicationRunResult(
-                success=False,
-                status=RunStatus.FAILED,
-                errors=[
-                    "Skyvern run timed out before reaching a terminal state. "
-                    f"Increase RUNNER_SKYVERN_MAX_WAIT_SECONDS (current={config.max_wait_seconds})."
-                ],
-                notes=notes + config.llm_mapping_notes,
-            )
-            with contextlib.suppress(Exception):
-                result.save_json(result_path)
-            return result
-        except SkyvernSDKError as exc:
-            result = ApplicationRunResult(
-                success=False,
-                status=RunStatus.FAILED,
-                errors=[str(exc)],
-                notes=notes + config.llm_mapping_notes,
-            )
-            with contextlib.suppress(Exception):
-                result.save_json(result_path)
-            return result
-        except Exception as exc:  # pragma: no cover - defensive for SDK drift
-            result = ApplicationRunResult(
-                success=False,
-                status=RunStatus.FAILED,
-                errors=[f"Skyvern execution failed: {exc}"],
-                notes=notes + config.llm_mapping_notes,
-            )
-            with contextlib.suppress(Exception):
-                result.save_json(result_path)
-            return result
+                with contextlib.suppress(Exception):
+                    result.save_json(result_path)
+                return result
+            except Exception as exc:  # pragma: no cover - defensive for SDK drift
+                result = ApplicationRunResult(
+                    success=False,
+                    status=RunStatus.FAILED,
+                    errors=[f"Skyvern execution failed: {exc}"],
+                    notes=notes + config.llm_mapping_notes,
+                )
+                with contextlib.suppress(Exception):
+                    result.save_json(result_path)
+                return result
 
     payload = client.to_plain_data(run_response)
     with contextlib.suppress(Exception):

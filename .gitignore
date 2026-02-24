@@ -115,3 +115,7 @@ test_*_manual.py
 artifacts/manual_verification
 
 .emdash.json
+
+video/
+temp/
+har/

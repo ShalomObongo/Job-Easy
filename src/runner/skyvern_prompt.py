@@ -35,6 +35,13 @@ def build_runner_prompt(
         "- Never attempt CAPTCHA/2FA bypass; if blocked by OTP/CAPTCHA, stop and report status=blocked.\n\n"
         f"Applicant profile summary:\n{profile_summary}\n\n"
         f"Available files:\n{upload_summary}\n\n"
+        "Upload execution rules:\n"
+        "- For every upload action, set action.file_url to one of the exact URLs above.\n"
+        "- Do not only click Attach/Upload buttons without an upload file_url.\n\n"
+        "Field completion rules:\n"
+        "- For required dropdowns/comboboxes, pick the closest truthful option if exact text is unavailable.\n"
+        "- If a school/company/program value is missing, use 'Other' / 'Not listed' when available and continue.\n"
+        "- Never loop repeatedly on a missing option; apply best-effort truthful fallback once and move on.\n\n"
         f"YOLO mode: {'enabled' if yolo_mode else 'disabled'}\n"
         f"Auto-submit mode: {submit_mode}\n\n"
         f"{yolo_section}\n\n"
@@ -149,12 +156,19 @@ def _profile_summary(profile: Any) -> str:
 def _upload_summary(resume_path: str | None, cover_letter_path: str | None) -> str:
     rows: list[str] = []
     if resume_path:
-        rows.append(f"- Resume: {Path(resume_path)}")
+        rows.append(f"- Resume: {_format_upload_reference(resume_path)}")
     if cover_letter_path:
-        rows.append(f"- Cover letter: {Path(cover_letter_path)}")
+        rows.append(f"- Cover letter: {_format_upload_reference(cover_letter_path)}")
     if not rows:
         rows.append("- No upload files provided.")
     return "\n".join(rows)
+
+
+def _format_upload_reference(value: str) -> str:
+    text = str(value).strip()
+    if text.startswith(("http://", "https://", "file://")):
+        return text
+    return str(Path(text))
 
 
 def _yolo_section(*, yolo_mode: bool, yolo_context: dict[str, Any] | None) -> str:

@@ -101,3 +101,48 @@ Result:
 
 - Full live integration suites were not used for final verification because they are environment-dependent and long-running.
 - Runner refactor verification focused on local Skyvern adapter behavior, compatibility mapping, artifacts, and orchestration contracts.
+
+## Additional Verification (Later Session)
+
+### 4) Local Skyvern browser window stability
+
+Changes applied:
+
+- Added local wrapper script: `scripts/start_skyvern_local.sh`
+- Wrapper sets:
+  - `BROWSER_WIDTH` / `BROWSER_HEIGHT` from laptop bounds (`osascript`) with fallback `1440x900`
+  - `BROWSER_ADDITIONAL_ARGS` including:
+    - `--window-position=0,0`
+    - `--window-size=<width>,<height>`
+    - `--force-device-scale-factor=1`
+
+Observed:
+
+- Skyvern Chromium launch command includes explicit size args.
+- Front window bounds observed via AppleScript: `0,30,1442,870` (matches expected laptop size class and stays stable).
+
+### 5) Turaco end-to-end YOLO + auto-submit with tailored resume/cover
+
+Target URL:
+
+- `https://turaco.breezy.hr/p/c3b472050c6b-software-engineer`
+
+Artifacts:
+
+- Tailored docs run dir: `artifacts/runs/manual_turaco_tailor_20260224_1645`
+- Apply run dir: `artifacts/runs/manual_turaco_apply_tailored_20260224_1648`
+
+Observed:
+
+- Final runner status: `submitted`
+- `application_result.json` indicates `success: true`, `status: submitted`
+- Skyvern action summary:
+  - `actions=10`
+  - `non_completed=0`
+  - `errored=0`
+  - `uploads with file_url=2` (resume + cover letter)
+
+Notes:
+
+- Cover letter upload appeared as a `click` action carrying `file_url` in timeline; resume appeared as `upload_file`.
+- No upload transport errors were observed in this Turaco run.
