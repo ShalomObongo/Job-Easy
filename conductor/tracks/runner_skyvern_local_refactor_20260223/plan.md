@@ -1,17 +1,17 @@
 # Implementation Plan: runner_skyvern_local_refactor_20260223
 
 ## Phase 1: Design and Migration Contract
-- [ ] Task: Finalize runner-to-Skyvern architecture and invariants
-    - [ ] Define explicit module boundaries (`src/runner/skyvern_*` adapter layer)
-    - [ ] Define unsupported paths and migration constraints (runner-only replacement)
-    - [ ] Define status and error mapping contract to `ApplicationRunResult`
-- [ ] Task: Map current runner capabilities to Skyvern equivalents
-    - [ ] Prompting/safety gates mapping
-    - [ ] File upload and artifact mapping
-    - [ ] Task/workflow lifecycle and terminal-state handling
-- [ ] Task: Specify Q&A bank and YOLO compatibility strategy
-    - [ ] Preserve behavior where possible
-    - [ ] Define explicit transition behavior where parity is not feasible
+- [x] Task: Finalize runner-to-Skyvern architecture and invariants
+    - [x] Define explicit module boundaries (`src/runner/skyvern_*` adapter layer)
+    - [x] Define unsupported paths and migration constraints (runner-only replacement)
+    - [x] Define status and error mapping contract to `ApplicationRunResult`
+- [x] Task: Map current runner capabilities to Skyvern equivalents
+    - [x] Prompting/safety gates mapping
+    - [x] File upload and artifact mapping
+    - [x] Task/workflow lifecycle and terminal-state handling
+- [x] Task: Specify Q&A bank and YOLO compatibility strategy
+    - [x] Preserve behavior where possible
+    - [x] Define explicit transition behavior where parity is not feasible
 
 ## Phase 2: Local Skyvern Runtime and Configuration Integration
 - [ ] Task: Add Skyvern runner configuration surface in Job-Easy settings
