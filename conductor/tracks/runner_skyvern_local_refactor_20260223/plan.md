@@ -43,23 +43,23 @@
     - [x] Optional health probe helper for CLI and tests
 
 ## Phase 3: Implement Skyvern Runner Adapter
-- [ ] Task: Implement typed Skyvern client wrapper for runner module
-    - [ ] Task creation API integration
-    - [ ] Task status polling and terminal-state normalization
-    - [ ] Retrieval/mapping of execution artifacts (proof text/screenshot/logs)
-- [ ] Task: Implement prompt/payload builder for application tasks
-    - [ ] Include URL, applicant context, and upload artifact references
-    - [ ] Encode safety instructions and submission semantics
-    - [ ] Encode extraction schema for structured completion signals
-- [ ] Task: Implement robust error and timeout handling
-    - [ ] Network failures and retries
-    - [ ] Non-terminal polling timeout behavior
-    - [ ] Structured error mapping to runner result model
-- [ ] Task: Implement browser profile bootstrap/reuse manager
-    - [ ] Bootstrap run path with `persist_browser_session: true`
-    - [ ] Post-completion profile creation with bounded retry/backoff for async archive readiness
-    - [ ] Reuse persisted `browser_profile_id` in follow-up runs
-    - [ ] Re-bootstrap/fail-fast fallback semantics when profile restore fails
+- [x] Task: Implement typed Skyvern client wrapper for runner module
+    - [x] Task creation API integration
+    - [x] Task status polling and terminal-state normalization
+    - [x] Retrieval/mapping of execution artifacts (proof text/screenshot/logs)
+- [x] Task: Implement prompt/payload builder for application tasks
+    - [x] Include URL, applicant context, and upload artifact references
+    - [x] Encode safety instructions and submission semantics
+    - [x] Encode extraction schema for structured completion signals
+- [x] Task: Implement robust error and timeout handling
+    - [x] Network failures and retries
+    - [x] Non-terminal polling timeout behavior
+    - [x] Structured error mapping to runner result model
+- [x] Task: Implement browser profile bootstrap/reuse manager
+    - [x] Bootstrap run path with `persist_browser_session: true`
+    - [x] Post-completion profile creation with bounded retry/backoff for async archive readiness
+    - [x] Reuse persisted `browser_profile_id` in follow-up runs
+    - [x] Re-bootstrap/fail-fast fallback semantics when profile restore fails
 
 ## Phase 4: Replace Runner Service and CLI Execution Paths
 - [ ] Task: Refactor `SingleJobApplicationService._run_application_flow` to Skyvern backend
