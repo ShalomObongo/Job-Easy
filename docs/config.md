@@ -260,7 +260,7 @@ Primary backend is now local Skyvern:
 | `runner_skyvern_api_key` | `str \| None` | `None` | Optional Skyvern API key |
 | `runner_skyvern_timeout_seconds` | `int` | `15` | HTTP timeout for health/artifact requests |
 | `runner_skyvern_poll_interval_seconds` | `float` | `1.5` | Poll interval for async run checks |
-| `runner_skyvern_max_wait_seconds` | `int` | `900` | Max wait for terminal run state |
+| `runner_skyvern_max_wait_seconds` | `int` | `1800` | Max wait for terminal run state |
 | `runner_skyvern_enforce_local` | `bool` | `True` | Reject non-local Skyvern endpoints |
 | `runner_skyvern_verify_health` | `bool` | `True` | Probe Skyvern health before execution |
 | `runner_skyvern_env_overrides` | `str \| None` | `None` | JSON object of explicit runtime env overrides |

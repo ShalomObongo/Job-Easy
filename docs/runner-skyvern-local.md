@@ -1,73 +1,74 @@
 # Runner on Local Skyvern
 
-## Summary
+## Scope
 
-Runner execution is now Skyvern-backed and local-first.
+Runner execution is Skyvern-local only.
 
 - Active backend: `RUNNER_BACKEND=skyvern_local`
 - Local API default: `RUNNER_SKYVERN_BASE_URL=http://localhost:8000`
-- Extractor remains Browser Use-based.
+- Extractor, scoring, and tailoring modules keep their current Browser Use + LLM behavior.
 
-## Required Local Setup
+This separation is intentional: only `runner` uses Skyvern directly.
 
-1. Start a local Skyvern service (API must be reachable from Job-Easy).
-2. Ensure runner points at your local endpoint:
-   - `RUNNER_SKYVERN_BASE_URL=http://localhost:8000`
-   - `RUNNER_SKYVERN_ENFORCE_LOCAL=true`
-3. Keep health checks enabled unless debugging startup issues:
-   - `RUNNER_SKYVERN_VERIFY_HEALTH=true`
+## What Changed in the Latest Runner Refactor
 
-## Browser Profile Reuse
+The current runner track added reliability-focused behavior:
 
-Skyvern supports two common local patterns.
+- Structured job context is always injected into runner prompts for better tailoring.
+- Upload routing is explicit:
+  - resume file only goes to Resume/CV upload controls
+  - cover-letter PDF only goes to explicit cover-letter/supporting-document upload controls
+- Cover-letter text fields are handled as text fields:
+  - if the form asks for a written cover letter, runner writes tailored text
+  - file upload is used only for actual file-upload controls
+- Completion guardrails prevent early finish:
+  - runner must sweep required fields across the full form before `complete/submit`
+  - required dropdowns still showing `Select...` are treated as incomplete
+- Default wait for long forms increased to:
+  - `RUNNER_SKYVERN_MAX_WAIT_SECONDS=1800`
 
-### Managed Chrome by executable path
+## Prerequisites
 
-Use local CDP-connect mode with an installed Chrome executable:
+1. Project venv and dependencies installed.
+2. `.env` populated (start from `.env.example`).
+3. Profile created at `profiles/profile.yaml`.
+4. Local Skyvern service available.
 
-- `RUNNER_SKYVERN_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
-- Skyvern-side browser env should use CDP-connect mode and Chrome executable path.
+## Local Setup and Startup
 
-### Attached browser mode
+### 1) Install and Configure
 
-Attach to an already-running debug Chrome instance:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env
+cp profiles/profile.example.yaml profiles/profile.yaml
+```
 
-- launch Chrome with remote debugging (example port `9222`)
-- set `RUNNER_SKYVERN_BROWSER_ADDRESS=http://127.0.0.1:9222`
+### 2) Start Skyvern Server
 
-### Persisted profile bootstrap/reuse
+Use the project script (recommended):
 
-- bootstrap workflow id: `RUNNER_SKYVERN_PROFILE_BOOTSTRAP_WORKFLOW_ID`
-- created profile name: `RUNNER_SKYVERN_PROFILE_NAME`
-- retry controls:
-  - `RUNNER_SKYVERN_PROFILE_CREATE_RETRIES`
-  - `RUNNER_SKYVERN_PROFILE_CREATE_RETRY_DELAY_SECONDS`
-- direct reuse id: `RUNNER_SKYVERN_BROWSER_PROFILE_ID`
+```bash
+./scripts/start_skyvern_local.sh
+```
 
-## Legacy `RUNNER_LLM_*` Compatibility
+What this script does:
 
-Runner accepts legacy runner env variables and maps them into Skyvern-compatible env keys at runtime.
+- reads `RUNNER_LLM_*` from `.env` and maps to Skyvern-compatible env keys
+- sets browser window size/position defaults
+- launches `python -m skyvern run server` from `.venv`
+- uses `DATABASE_STRING` if provided; otherwise defaults to:
+  - `postgresql+psycopg://localhost/skyvern`
 
-| Legacy input | Skyvern mapping |
-|---|---|
-| `RUNNER_LLM_BASE_URL` set | `ENABLE_OPENAI_COMPATIBLE=true`, maps base/model/key, `LLM_KEY=OPENAI_COMPATIBLE` |
-| `RUNNER_LLM_MODEL` with base URL | `OPENAI_COMPATIBLE_MODEL_NAME` |
-| `RUNNER_LLM_API_KEY` with base URL | `OPENAI_COMPATIBLE_API_KEY` |
-| `RUNNER_LLM_REASONING_EFFORT` with base URL | `OPENAI_COMPATIBLE_REASONING_EFFORT` |
-| `RUNNER_LLM_PROVIDER=openai` | `ENABLE_OPENAI=true`, `OPENAI_API_KEY`, mapped `LLM_KEY` |
-| `RUNNER_LLM_PROVIDER=anthropic` | `ENABLE_ANTHROPIC=true`, `ANTHROPIC_API_KEY`, mapped `LLM_KEY` |
+### 3) Verify Local API
 
-Unsupported in Skyvern mode:
+```bash
+curl -s http://localhost:8000/openapi.json >/dev/null && echo "skyvern up"
+```
 
-- `RUNNER_LLM_PROVIDER=browser_use` (fails fast)
-
-Precedence:
-
-1. `RUNNER_SKYVERN_ENV_OVERRIDES` (explicit JSON object)
-2. mapped legacy `RUNNER_LLM_*`
-3. Skyvern server defaults
-
-## Key Runner Env Variables
+## Required Runner Environment
 
 ```dotenv
 RUNNER_BACKEND=skyvern_local
@@ -75,10 +76,15 @@ RUNNER_SKYVERN_BASE_URL=http://localhost:8000
 RUNNER_SKYVERN_ENFORCE_LOCAL=true
 RUNNER_SKYVERN_VERIFY_HEALTH=true
 RUNNER_SKYVERN_TIMEOUT_SECONDS=15
-RUNNER_SKYVERN_MAX_WAIT_SECONDS=900
 RUNNER_SKYVERN_POLL_INTERVAL_SECONDS=1.5
+RUNNER_SKYVERN_MAX_WAIT_SECONDS=1800
+```
 
-# optional profile/session reuse
+## Optional Runtime Environment
+
+### Browser profile/session reuse
+
+```dotenv
 RUNNER_SKYVERN_BROWSER_PROFILE_ID=
 RUNNER_SKYVERN_BROWSER_SESSION_ID=
 RUNNER_SKYVERN_BROWSER_ADDRESS=
@@ -88,10 +94,89 @@ RUNNER_SKYVERN_PROFILE_BOOTSTRAP_WORKFLOW_ID=
 RUNNER_SKYVERN_PROFILE_NAME=job-easy-profile
 RUNNER_SKYVERN_PROFILE_CREATE_RETRIES=10
 RUNNER_SKYVERN_PROFILE_CREATE_RETRY_DELAY_SECONDS=1.0
+```
 
-# optional explicit runtime env overrides for Skyvern
+### Explicit Skyvern env overrides
+
+```dotenv
 RUNNER_SKYVERN_ENV_OVERRIDES={"LLM_KEY":"OPENAI_GPT4O"}
 ```
+
+### Legacy `RUNNER_LLM_*` compatibility
+
+Runner still accepts legacy runner LLM vars and maps them at runtime.
+
+| Legacy input | Skyvern mapping |
+|---|---|
+| `RUNNER_LLM_BASE_URL` set | `ENABLE_OPENAI_COMPATIBLE=true`, maps base/model/key, `LLM_KEY=OPENAI_COMPATIBLE` |
+| `RUNNER_LLM_MODEL` + base URL | `OPENAI_COMPATIBLE_MODEL_NAME` |
+| `RUNNER_LLM_API_KEY` + base URL | `OPENAI_COMPATIBLE_API_KEY` |
+| `RUNNER_LLM_REASONING_EFFORT` + base URL | `OPENAI_COMPATIBLE_REASONING_EFFORT` |
+| `RUNNER_LLM_PROVIDER=openai` | `ENABLE_OPENAI=true`, `OPENAI_API_KEY`, mapped `LLM_KEY` |
+| `RUNNER_LLM_PROVIDER=anthropic` | `ENABLE_ANTHROPIC=true`, `ANTHROPIC_API_KEY`, mapped `LLM_KEY` |
+
+Unsupported:
+
+- `RUNNER_LLM_PROVIDER=browser_use` (fails fast for runner)
+
+Precedence:
+
+1. `RUNNER_SKYVERN_ENV_OVERRIDES`
+2. mapped `RUNNER_LLM_*`
+3. Skyvern server defaults
+
+## Running the System
+
+### Full pipeline (recommended)
+
+```bash
+python -m src single "<JOB_URL>"
+python -m src single "<JOB_URL>" --yolo
+python -m src single "<JOB_URL>" --yolo --yes
+python -m src single "<JOB_URL>" --yolo --yes --auto-submit
+```
+
+### Runner-only execution
+
+```bash
+python -m src apply "<APPLICATION_URL>" --resume ./resume.pdf --cover-letter ./cover.pdf
+```
+
+With YOLO context (recommended for harder forms):
+
+```bash
+python -m src apply "<APPLICATION_URL>" \
+  --resume ./resume.pdf \
+  --cover-letter ./cover.pdf \
+  --profile profiles/profile.yaml \
+  --jd artifacts/runs/<RUN_ID>/jd.json \
+  --yolo
+```
+
+## Expected Runtime Behavior
+
+During apply runs, expect this order:
+
+1. identity + contact fields
+2. resume upload
+3. cover-letter upload (only if explicit cover upload control exists)
+4. required question sweep (dropdowns/comboboxes/consents/demographics where required)
+5. submit/finalize
+
+For unknown required questions:
+
+- non-YOLO mode: blocked with explicit error
+- YOLO mode: best-effort truthful answer from profile + job context, then blocked only if still unresolved
+
+## Runner Artifacts
+
+Each run directory should include:
+
+- `application_result.json`
+- `conversation.jsonl`
+- `skyvern_execution.json`
+- `skyvern_artifacts.json` (when screenshot/recording metadata exists)
+- `proof.png` (when screenshot download succeeds)
 
 ## Troubleshooting
 
@@ -99,52 +184,55 @@ RUNNER_SKYVERN_ENV_OVERRIDES={"LLM_KEY":"OPENAI_GPT4O"}
 
 Symptom:
 
-- error says local enforcement rejected your Skyvern URL
+- runner fails with local-enforcement error
 
 Fix:
 
-- use loopback URL (`localhost`, `127.0.0.1`, `::1`) or set `RUNNER_SKYVERN_ENFORCE_LOCAL=false` intentionally
+- use loopback URL (`localhost`, `127.0.0.1`, `::1`)
+- or intentionally set `RUNNER_SKYVERN_ENFORCE_LOCAL=false`
 
 ### Health check failure
 
 Symptom:
 
-- error indicates `/health` probe failed
+- runner fails before execution with health probe errors
 
 Fix:
 
-- start local Skyvern API
+- ensure Skyvern server is running
 - verify `RUNNER_SKYVERN_BASE_URL`
-- confirm firewall/port access
+- check local firewall/port access
 
-### Browser profile creation fails right after bootstrap
+### Run appears stalled on large forms
 
 Symptom:
 
-- profile creation fails with persisted/archive-not-ready style errors
+- same step persists for a while with low/slow action count changes
+
+Fix:
+
+- allow more time; long embedded Greenhouse flows can be slow
+- inspect `skyvern_execution.json` and timeline in local Skyvern UI
+- increase `RUNNER_SKYVERN_MAX_WAIT_SECONDS` beyond `1800` if needed
+
+### Browser profile bootstrap fails
+
+Symptom:
+
+- profile creation fails after bootstrap workflow
 
 Fix:
 
 - keep retry settings enabled/increase retries
-- verify bootstrap workflow has `persist_browser_session: true`
+- ensure bootstrap workflow persists browser session (`persist_browser_session=true`)
 
-### Provider mapping failure
-
-Symptom:
-
-- `RUNNER_LLM_PROVIDER=browser_use` or invalid combo errors
-
-Fix:
-
-- switch to `openai`, `anthropic`, or OpenAI-compatible (`RUNNER_LLM_BASE_URL`)
-
-### Run times out
+### Wrong provider mapping
 
 Symptom:
 
-- run exits with timeout and no terminal status
+- invalid provider/mapping errors for runner
 
 Fix:
 
-- increase `RUNNER_SKYVERN_MAX_WAIT_SECONDS`
-- inspect `skyvern_execution.json` and `skyvern_artifacts.json` in run output
+- use `RUNNER_LLM_PROVIDER=openai|anthropic` or OpenAI-compatible base URL
+- avoid `RUNNER_LLM_PROVIDER=browser_use` for runner

@@ -56,7 +56,7 @@ def resolve_runner_skyvern_config(settings: Any) -> SkyvernRunnerConfig:
     poll_interval_seconds = float(
         getattr(settings, "runner_skyvern_poll_interval_seconds", 1.5)
     )
-    max_wait_seconds = int(getattr(settings, "runner_skyvern_max_wait_seconds", 900))
+    max_wait_seconds = int(getattr(settings, "runner_skyvern_max_wait_seconds", 1800))
 
     enforce_local = bool(getattr(settings, "runner_skyvern_enforce_local", True))
     verify_health = bool(getattr(settings, "runner_skyvern_verify_health", True))

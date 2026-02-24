@@ -323,6 +323,7 @@ async def run_application_with_skyvern(
         notes.extend(upload_refs.notes)
         prompt = build_runner_prompt(
             job_url=job_url,
+            job=job,
             profile=profile,
             resume_path=upload_refs.resume_path,
             cover_letter_path=upload_refs.cover_letter_path,

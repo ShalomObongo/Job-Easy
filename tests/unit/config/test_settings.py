@@ -94,7 +94,7 @@ class TestSettingsDefaults:
             assert settings.runner_skyvern_api_key is None
             assert settings.runner_skyvern_timeout_seconds == 15
             assert settings.runner_skyvern_poll_interval_seconds == 1.5
-            assert settings.runner_skyvern_max_wait_seconds == 900
+            assert settings.runner_skyvern_max_wait_seconds == 1800
             assert settings.runner_skyvern_enforce_local is True
             assert settings.runner_skyvern_verify_health is True
             assert settings.runner_skyvern_env_overrides is None

@@ -20,7 +20,7 @@ def _settings(**overrides):
         "runner_skyvern_api_key": None,
         "runner_skyvern_timeout_seconds": 15,
         "runner_skyvern_poll_interval_seconds": 1.5,
-        "runner_skyvern_max_wait_seconds": 900,
+        "runner_skyvern_max_wait_seconds": 1800,
         "runner_skyvern_enforce_local": True,
         "runner_skyvern_verify_health": True,
         "runner_skyvern_workflow_id": None,

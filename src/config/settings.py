@@ -167,7 +167,7 @@ class Settings(BaseSettings):
         description="Polling interval in seconds for async Skyvern run checks.",
     )
     runner_skyvern_max_wait_seconds: Annotated[int, Field(gt=0)] = Field(
-        default=900,
+        default=1800,
         description="Maximum wait in seconds for Skyvern run completion.",
     )
     runner_skyvern_enforce_local: bool = Field(

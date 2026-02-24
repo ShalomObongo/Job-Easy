@@ -94,7 +94,21 @@ cp profiles/profile.example.yaml profiles/profile.yaml  # Add your info
 Profile tips:
 - Add `github_url` to your `profiles/profile.yaml` (optional) so it can be included on the resume and used by YOLO mode to answer “GitHub/portfolio” questions.
 
-### 3️⃣ Run
+### 3️⃣ Start Local Skyvern (Runner Backend)
+
+Runner execution is local Skyvern only. Extractor/scoring/tailoring still use Browser Use + LLM providers.
+
+```bash
+# Terminal 1
+./scripts/start_skyvern_local.sh
+```
+
+Notes:
+- Script reads `RUNNER_LLM_*` from `.env` and maps them to Skyvern-compatible env values.
+- Script sets browser window size/position automatically (override with `BROWSER_WIDTH` / `BROWSER_HEIGHT`).
+- Default database is `postgresql+psycopg://localhost/skyvern` (override with `DATABASE_STRING`).
+
+### 4️⃣ Run Job-Easy
 
 ```bash
 # Single job - full pipeline
@@ -128,6 +142,16 @@ python -m src autonomous leads.txt --dry-run
                     Job description      Fit analysis        Resume + CL         Form filled
                     + requirements       + recommendation    customized          + submitted
 ```
+
+### Runner Backend (Skyvern Local)
+
+- `extractor` remains Browser Use-based.
+- `runner` executes via local Skyvern (`RUNNER_BACKEND=skyvern_local`).
+- Runner injects structured job + profile context into apply prompts for tailored answers.
+- Upload routing is strict: resume goes to Resume/CV fields, cover letter PDF only to explicit cover upload fields.
+- If a cover-letter text field exists, runner writes tailored text into that field instead of uploading a file.
+- Runner guards against early completion by requiring a full required-field sweep before complete/submit.
+- Default max wait is `RUNNER_SKYVERN_MAX_WAIT_SECONDS=1800` for longer forms.
 
 ### Safety Gates at Every Step
 
@@ -204,7 +228,7 @@ Run individual stages:
 | `python -m src score --jd <file> --profile <file>` | 📊 Score job fit |
 | `python -m src score-eval --input <path> --profile <file>` | 🧪 Compare deterministic vs LLM scoring |
 | `python -m src tailor --jd <file> --profile <file>` | 📝 Generate documents |
-| `python -m src apply <url> --resume <file>` | ✅ Run application (runner only) |
+| `python -m src apply <url> --resume <file> [--cover-letter <file>]` | ✅ Run application (runner only) |
 | `python -m src queue <leads> --profile <file>` | 📋 Preview ranked batch |
 | `python -m src tracker stats` | 📈 View statistics |
 
@@ -220,6 +244,10 @@ Run individual stages:
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Your LLM credentials |
 | `SCORING_PROFILE_PATH` | Path to your profile YAML |
 | `SCORING_SCORING_MODE` | `deterministic` or `llm` |
+| `RUNNER_BACKEND` | Must be `skyvern_local` |
+| `RUNNER_SKYVERN_BASE_URL` | Local Skyvern API URL (`http://localhost:8000`) |
+| `RUNNER_SKYVERN_ENFORCE_LOCAL` | Keep `true` to reject remote runner endpoints |
+| `RUNNER_SKYVERN_MAX_WAIT_SECONDS` | Max runner wait (default `1800`) |
 
 ### Scoring Weights
 
@@ -269,6 +297,9 @@ Each run creates:
 | `resume.pdf` | 📄 Tailored resume |
 | `cover_letter.pdf` | ✉️ Generated cover letter |
 | `application_result.json` | ✅ Submission status |
+| `skyvern_execution.json` | 🤖 Raw Skyvern run payload + output |
+| `skyvern_artifacts.json` | 🎥 Screenshot/recording metadata (when available) |
+| `conversation.jsonl` | 🧾 Serialized runner conversation payload |
 
 ---
 
@@ -283,6 +314,8 @@ Deep-dive into each module:
 | Job Extraction | [extractor.md](docs/extractor.md) |
 | Safety Gates | [hitl.md](docs/hitl.md) |
 | Application Runner | [runner.md](docs/runner.md) |
+| Runner Local Setup | [runner-skyvern-local.md](docs/runner-skyvern-local.md) |
+| Runner Manual Verification | [runner-manual-test.md](docs/runner-manual-test.md) |
 | Fit Scoring | [scoring.md](docs/scoring.md) |
 | Document Tailoring | [tailoring.md](docs/tailoring.md) |
 | Application Tracking | [tracker.md](docs/tracker.md) |

@@ -15,6 +15,11 @@ Runner orchestration remains in `SingleJobApplicationService` and includes:
 
 For local setup and operations, see [runner-skyvern-local.md](./runner-skyvern-local.md).
 
+Current backend boundary:
+
+- `runner`: Skyvern local only
+- `extractor` / `scoring` / `tailoring`: unchanged from existing Browser Use + LLM flows
+
 ## Module Structure
 
 ```text
@@ -73,6 +78,7 @@ src/runner/
 
 - builds prompt + extraction schema
 - runs Skyvern workflow or task mode
+- injects structured job context + profile context into prompt payload
 - writes artifacts:
   - `application_result.json`
   - `conversation.jsonl`
@@ -80,6 +86,20 @@ src/runner/
   - `skyvern_artifacts.json`
 - downloads first screenshot to `proof.png` when available
 - applies prohibited-domain checks to visited URLs/final URL
+
+### Prompt policy and reliability (`skyvern_prompt.py`)
+
+- strict upload disambiguation:
+  - resume file is limited to Resume/CV upload controls
+  - cover-letter PDF is limited to explicit cover/supporting-document upload controls
+- cover-letter text handling:
+  - if the form asks for written cover letter text, runner writes tailored text into the text field
+- required-field sweep guardrail:
+  - runner is instructed not to complete immediately after identity/uploads
+  - required `Select...` dropdowns are treated as incomplete
+  - full required-field sweep is expected before complete/submit
+- long-form timeout default:
+  - `RUNNER_SKYVERN_MAX_WAIT_SECONDS=1800`
 
 ## Status Mapping
 
@@ -106,6 +126,7 @@ If extracted information includes explicit `status`, that value takes precedence
 - no CAPTCHA/OTP bypass automation
 - no fabricated information requirements in runner prompt policy
 - auto-submit requires explicit runner conditions (`runner_yolo_mode` + `runner_assume_yes`)
+- unresolved required questions in non-YOLO mode are blocked with explicit errors
 
 ## Notes on Legacy Browser Use Runner Internals
 
