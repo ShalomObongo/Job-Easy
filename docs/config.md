@@ -209,7 +209,13 @@ output_dir.mkdir(parents=True, exist_ok=True)
 
 ### Runner Settings
 
-Configuration for the browser automation runner (application form filling).
+Configuration for the application runner (Skyvern-backed execution).
+
+Primary backend is now local Skyvern:
+
+- `runner_backend=skyvern_local`
+- `runner_skyvern_base_url=http://localhost:8000`
+- `runner_skyvern_enforce_local=true` (recommended)
 
 #### Browser Settings
 
@@ -220,6 +226,9 @@ Configuration for the browser automation runner (application form filling).
 | `runner_window_height` | `int` | `720` | Browser window height |
 
 **Environment Variables**: `RUNNER_HEADLESS`, `RUNNER_WINDOW_WIDTH`, `RUNNER_WINDOW_HEIGHT`
+
+> These browser window fields are retained for compatibility. Skyvern runner execution
+> is controlled by `RUNNER_SKYVERN_*` settings.
 
 #### Agent Behavior
 
@@ -241,6 +250,37 @@ Configuration for the browser automation runner (application form filling).
 - `runner_step_timeout`: Must be > 0
 - `runner_use_vision`: Must be one of: "auto", "true", "false"
 - `runner_auto_submit`: Requires both `runner_yolo_mode=True` and `runner_assume_yes=True`
+
+#### Skyvern Runtime
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `runner_backend` | `str` | `"skyvern_local"` | Runner backend selector (must be `skyvern_local`) |
+| `runner_skyvern_base_url` | `str` | `"http://localhost:8000"` | Local Skyvern API base URL |
+| `runner_skyvern_api_key` | `str \| None` | `None` | Optional Skyvern API key |
+| `runner_skyvern_timeout_seconds` | `int` | `15` | HTTP timeout for health/artifact requests |
+| `runner_skyvern_poll_interval_seconds` | `float` | `1.5` | Poll interval for async run checks |
+| `runner_skyvern_max_wait_seconds` | `int` | `900` | Max wait for terminal run state |
+| `runner_skyvern_enforce_local` | `bool` | `True` | Reject non-local Skyvern endpoints |
+| `runner_skyvern_verify_health` | `bool` | `True` | Probe Skyvern health before execution |
+| `runner_skyvern_env_overrides` | `str \| None` | `None` | JSON object of explicit runtime env overrides |
+| `runner_skyvern_workflow_id` | `str \| None` | `None` | Optional workflow mode execution id |
+
+#### Skyvern Browser Session/Profile Reuse
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `runner_skyvern_browser_profile_id` | `str \| None` | `None` | Reuse persisted browser profile |
+| `runner_skyvern_browser_session_id` | `str \| None` | `None` | Reuse existing browser session |
+| `runner_skyvern_browser_address` | `str \| None` | `None` | Attach to debug browser address |
+| `runner_skyvern_browser_path` | `str \| None` | `None` | Local Chrome executable path for CDP-connect mode |
+| `runner_skyvern_persist_browser_session` | `bool` | `False` | Request persisted browser session |
+| `runner_skyvern_profile_bootstrap_workflow_id` | `str \| None` | `None` | Bootstrap workflow for profile creation |
+| `runner_skyvern_profile_name` | `str` | `"job-easy-profile"` | Created profile name |
+| `runner_skyvern_profile_create_retries` | `int` | `10` | Retry count for delayed archive readiness |
+| `runner_skyvern_profile_create_retry_delay_seconds` | `float` | `1.0` | Retry delay for profile creation |
+
+See [runner-skyvern-local.md](./runner-skyvern-local.md) for full operational guidance.
 
 #### Domain Restrictions
 
@@ -285,7 +325,8 @@ Runner can use a different LLM than the extractor.
 - `runner_llm_provider`: Must be one of: "auto", "openai", "anthropic", "browser_use" (or None)
 
 **Fallback Behavior**:
-- If `runner_llm_*` settings are `None`, runner falls back to `EXTRACTOR_LLM_*` settings
+- Runner maps `RUNNER_LLM_*` values into Skyvern runtime env keys.
+- Explicit `RUNNER_SKYVERN_ENV_OVERRIDES` take precedence over compatibility mapping.
 
 ---
 

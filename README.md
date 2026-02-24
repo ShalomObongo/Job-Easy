@@ -335,7 +335,7 @@ MIT — Use it, modify it, make your job search easier.
 ---
 
 <p align="center">
-  <strong>Built with 🤖 Browser Use + AI-Powered Document Generation</strong>
+  <strong>Built with 🤖 Skyvern (Runner) + Browser Use (Extractor) + AI-Powered Document Generation</strong>
 </p>
 
 <p align="center">

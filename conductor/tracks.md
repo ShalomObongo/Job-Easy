@@ -8,7 +8,7 @@
 
 ---
 
-- [ ] **Track: Runner Rewrite on Local Skyvern (Profile-Reuse First)**
+- [x] **Track: Runner Rewrite on Local Skyvern (Profile-Reuse First)**
 *Link: [./tracks/runner_skyvern_local_refactor_20260223/](./tracks/runner_skyvern_local_refactor_20260223/)*
 
 ---

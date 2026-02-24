@@ -93,15 +93,15 @@
     - [x] expanded regression run for related modules
 
 ## Phase 6: Rollout, Documentation, and Cleanup
-- [ ] Task: Update docs for local Skyvern runner operations
-    - [ ] Setup and env examples
-    - [ ] Browser profile reuse instructions
-    - [ ] `RUNNER_LLM_*` compatibility mapping table and migration examples
-    - [ ] Troubleshooting playbook
-- [ ] Task: Deprecate/clean obsolete Browser Use runner internals
-    - [ ] Remove dead code paths that are no longer used by runner execution
-    - [ ] Keep extractor Browser Use paths untouched
-    - [ ] Ensure imports and dependencies remain coherent
-- [ ] Task: Manual verification checkpoint
-    - [ ] Validate at least one real application-form smoke path in local environment
-    - [ ] Capture artifacts and final migration notes in track folder
+- [x] Task: Update docs for local Skyvern runner operations
+    - [x] Setup and env examples
+    - [x] Browser profile reuse instructions
+    - [x] `RUNNER_LLM_*` compatibility mapping table and migration examples
+    - [x] Troubleshooting playbook
+- [x] Task: Deprecate/clean obsolete Browser Use runner internals
+    - [x] Remove dead code paths that are no longer used by runner execution
+    - [x] Keep extractor Browser Use paths untouched
+    - [x] Ensure imports and dependencies remain coherent
+- [x] Task: Manual verification checkpoint
+    - [x] Validate at least one real application-form smoke path in local environment
+    - [x] Capture artifacts and final migration notes in track folder

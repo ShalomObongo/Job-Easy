@@ -1,6 +1,6 @@
 # Product Guide — Job-Easy
 
-> A Browser Use-powered job application automation system
+> A job application automation system with Skyvern-backed runner execution
 
 ---
 
@@ -62,6 +62,7 @@ Check conductor/research.md for detailed research notes that informed the produc
 - Fill fields using applicant profile and Q&A bank
 - Upload tailored documents
 - Handle common form patterns across job boards
+- Execute runner automation through local Skyvern
 
 ### 5. Human-in-the-Loop Checkpoints
 - Document review before upload

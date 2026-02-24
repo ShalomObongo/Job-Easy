@@ -8,7 +8,7 @@
 
 ### Primary: Python 3.12
 - Latest stable version for modern features
-- Required for Browser Use compatibility
+- Required for Browser Use and Skyvern compatibility
 - Type hints encouraged (PEP 484)
 - Async/await patterns for browser automation
 
@@ -17,11 +17,15 @@
 ## Core Dependencies
 
 ### Browser Automation
-- **Browser Use**: Primary automation framework
-  - Agent-based browser control
-  - Built-in extraction tools
-  - Human-in-the-loop support
-  - Chrome profile integration
+- **Skyvern (local)**: Primary runner automation backend
+  - Local API service for task/workflow execution
+  - Browser profile/session reuse support
+  - SDK-based integration in `src/runner/skyvern_*`
+  - Docs: https://docs.skyvern.com
+
+- **Browser Use**: Extraction-focused automation backend
+  - Agent-based extraction for job descriptions
+  - Extractor module remains Browser Use-based
   - Docs: https://docs.browser-use.com
 
 ### Database & Storage
@@ -38,7 +42,8 @@
   - `pypdf` - PDF manipulation
 
 ### LLM Integration
-- Browser Use built-in LLM for page extraction
+- Browser Use LLM integration for extraction
+- Skyvern-managed runner LLM execution via runtime env mapping
 - Custom LLM calls for resume tailoring and cover letter generation
 - Support for multiple providers (OpenAI, Anthropic, etc.)
 
@@ -53,7 +58,7 @@
   /tracker        # Fingerprinting, storage, and queries
   /extractor      # JD extraction and schemas
   /tailoring      # Tailoring plan + resume/CL generation
-  /runner         # Browser automation runner + site adapters
+  /runner         # Skyvern-backed runner adapter + orchestration
   /hitl           # Human-in-the-loop tools/prompts
   /autonomous     # Queue + scheduler (autonomous mode)
   /utils          # Shared helpers
