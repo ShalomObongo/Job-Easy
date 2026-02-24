@@ -62,17 +62,17 @@
     - [x] Re-bootstrap/fail-fast fallback semantics when profile restore fails
 
 ## Phase 4: Replace Runner Service and CLI Execution Paths
-- [ ] Task: Refactor `SingleJobApplicationService._run_application_flow` to Skyvern backend
-    - [ ] Remove Browser Use runner-agent dependency in this path
-    - [ ] Preserve tracker persistence and run artifact contracts
-    - [ ] Preserve domain/duplicate/scoring/tailoring gates upstream
-- [ ] Task: Refactor CLI `apply` mode to Skyvern backend
-    - [ ] Preserve existing CLI UX and return-code behavior
-    - [ ] Keep `application_result.json` and proof artifact output behavior
-    - [ ] Keep runner-specific flags behaviorally consistent where supported
-- [ ] Task: Ensure autonomous mode compatibility
-    - [ ] Validate status mapping and batch accounting unchanged
-    - [ ] Validate dry-run mode remains tailoring-only
+- [x] Task: Refactor `SingleJobApplicationService._run_application_flow` to Skyvern backend
+    - [x] Remove Browser Use runner-agent dependency in this path
+    - [x] Preserve tracker persistence and run artifact contracts
+    - [x] Preserve domain/duplicate/scoring/tailoring gates upstream
+- [x] Task: Refactor CLI `apply` mode to Skyvern backend
+    - [x] Preserve existing CLI UX and return-code behavior
+    - [x] Keep `application_result.json` and proof artifact output behavior
+    - [x] Keep runner-specific flags behaviorally consistent where supported
+- [x] Task: Ensure autonomous mode compatibility
+    - [x] Validate status mapping and batch accounting unchanged
+    - [x] Validate dry-run mode remains tailoring-only
 
 ## Phase 5: Tests and Reliability Verification
 - [ ] Task: Add/refresh unit tests for new runner architecture

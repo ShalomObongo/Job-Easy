@@ -1,1 +1,1 @@
-"""Browser automation runner and site adapters."""
+"""Runner orchestration and Skyvern-backed application execution."""

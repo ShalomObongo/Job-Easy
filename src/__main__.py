@@ -2,12 +2,10 @@
 
 import argparse
 import asyncio
-import contextlib
 import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 from src import __version__
 from src.config.settings import Settings
@@ -748,13 +746,12 @@ def main(args: list[str] | None = None) -> int:
         return 0
 
     if parsed.mode == "apply":
-        from src.hitl.tools import create_hitl_tools
-        from src.runner.agent import (
-            create_application_agent,
-            create_browser,
-            get_runner_llm,
-        )
+        from src.extractor.models import JobDescription
         from src.runner.models import ApplicationRunResult, RunStatus
+        from src.runner.skyvern_runner import (
+            build_skyvern_apply_scope_hints,
+            run_application_with_skyvern,
+        )
 
         run_dir = _resolve_run_dir(
             settings,
@@ -762,184 +759,64 @@ def main(args: list[str] | None = None) -> int:
             out_run_dir=getattr(parsed, "out_run_dir", None),
         )
 
-        llm = get_runner_llm(settings)
-        if llm is None:
-            print("No LLM configured for runner", file=sys.stderr)
-            return 1
-
-        def _expand_upload_paths(paths: list[str]) -> list[str]:
-            expanded: list[str] = []
-            seen: set[str] = set()
-            for raw in paths:
-                raw_str = str(raw).strip()
-                if not raw_str:
-                    continue
-                for candidate in (raw_str, str(Path(raw_str).expanduser().resolve())):
-                    if candidate in seen:
-                        continue
-                    seen.add(candidate)
-                    expanded.append(candidate)
-            return expanded
-
-        upload_paths = [str(parsed.resume)]
-        if getattr(parsed, "cover_letter", None):
-            upload_paths.append(str(parsed.cover_letter))
-        available_file_paths = _expand_upload_paths(upload_paths)
-
-        sensitive_data: dict[str, str | dict[str, str]] = {}
         profile = None
         if getattr(parsed, "profile", None):
             from src.scoring.profile import ProfileService
 
             profile = ProfileService().load_profile(parsed.profile)
-            name_value = getattr(profile, "name", None)
-            if name_value:
-                name_str = str(name_value).strip()
-                if name_str:
-                    sensitive_data["full_name"] = name_str
-                    parts = [p for p in name_str.split() if p]
-                    if parts:
-                        sensitive_data["first_name"] = parts[0]
-                        if len(parts) > 1:
-                            sensitive_data["last_name"] = " ".join(parts[1:])
-            for key, attr in (
-                ("email", "email"),
-                ("phone", "phone"),
-                ("location", "location"),
-                ("linkedin_url", "linkedin_url"),
-                ("github_url", "github_url"),
-            ):
-                value = getattr(profile, attr, None)
-                if value:
-                    sensitive_data[key] = str(value)
+        job: JobDescription | None = None
+        if getattr(parsed, "jd", None) is not None:
+            jd_data = _load_json(parsed.jd)
+            job = JobDescription.from_dict(jd_data)
 
-        conversation_path = run_dir / "conversation.jsonl"
+        yolo_mode = bool(getattr(settings, "runner_yolo_mode", False))
+        if yolo_mode and (profile is None or job is None):
+            print(
+                "Error: --yolo requires --profile and --jd",
+                file=sys.stderr,
+            )
+            return 1
 
-        prohibited = list(getattr(settings, "prohibited_domains", []))
-        browser = None
-        try:
-            browser = create_browser(settings, prohibited_domains=prohibited)
+        qa_scope_hints = build_skyvern_apply_scope_hints(url=parsed.url, job=job)
+        assume_yes = bool(getattr(settings, "runner_assume_yes", False))
+        auto_submit_requested = bool(getattr(settings, "runner_auto_submit", False))
+        auto_submit = bool(auto_submit_requested and yolo_mode and assume_yes)
 
-            yolo_mode = bool(getattr(settings, "runner_yolo_mode", False))
-            assume_yes = bool(getattr(settings, "runner_assume_yes", False))
-            auto_submit_requested = bool(getattr(settings, "runner_auto_submit", False))
-            auto_submit = bool(auto_submit_requested and yolo_mode and assume_yes)
-            yolo_context = None
-
-            domain = urlparse(parsed.url).netloc.strip().lower()
-            qa_scope_hints = []
-
-            if yolo_mode:
-                if profile is None or getattr(parsed, "jd", None) is None:
-                    print(
-                        "Error: --yolo requires --profile and --jd",
-                        file=sys.stderr,
-                    )
-                    return 1
-
-                from src.extractor.models import JobDescription
-                from src.runner.yolo import build_yolo_context
-                from src.tracker.fingerprint import compute_fingerprint, extract_job_id
-
-                jd_data = _load_json(parsed.jd)
-                job = JobDescription.from_dict(jd_data)
-
-                job_id = job.job_id or extract_job_id(
-                    job.apply_url or job.job_url or parsed.url
-                )
-                job_fingerprint = compute_fingerprint(
-                    url=job.apply_url or job.job_url or parsed.url,
-                    job_id=job_id,
-                    company=job.company,
-                    role=job.role_title,
-                    location=job.location,
-                )
-
-                company_key = str(job.company or "").strip().lower()
-                qa_scope_hints.append(("job", job_fingerprint))
-                if company_key:
-                    qa_scope_hints.append(("company", company_key))
-                if domain:
-                    qa_scope_hints.append(("domain", domain))
-                qa_scope_hints.append(("global", None))
-
-                yolo_context = build_yolo_context(job=job, profile=profile)
-            else:
-                if domain:
-                    qa_scope_hints.append(("domain", domain))
-                qa_scope_hints.append(("global", None))
-
-            agent = create_application_agent(
+        result = asyncio.run(
+            run_application_with_skyvern(
+                settings=settings,
                 job_url=parsed.url,
-                browser=browser,
-                llm=llm,
-                tools=create_hitl_tools(auto_submit=auto_submit),
-                available_file_paths=available_file_paths,
-                save_conversation_path=conversation_path,
-                qa_bank_path=getattr(
-                    settings, "qa_bank_path", Path("./data/qa_bank.json")
-                ),
+                run_dir=run_dir,
+                job=job,
+                profile=profile,
+                resume_path=str(parsed.resume),
+                cover_letter_path=str(parsed.cover_letter)
+                if getattr(parsed, "cover_letter", None)
+                else None,
                 qa_scope_hints=qa_scope_hints,
-                sensitive_data=sensitive_data or None,
                 yolo_mode=yolo_mode,
-                yolo_context=yolo_context,
+                yolo_context=None,
                 auto_submit=auto_submit,
-                max_failures=getattr(settings, "runner_max_failures", 3),
-                max_actions_per_step=getattr(
-                    settings, "runner_max_actions_per_step", 4
-                ),
-                step_timeout=getattr(settings, "runner_step_timeout", 120),
-                use_vision=getattr(settings, "runner_use_vision", "auto"),
+            )
+        )
+
+        if not isinstance(result, ApplicationRunResult):
+            result = ApplicationRunResult(
+                success=False,
+                status=RunStatus.FAILED,
+                errors=["Runner did not produce structured output"],
             )
 
-            history = asyncio.run(agent.run())
+        print(f"Status: {result.status.value}")
+        print(f"Wrote: {run_dir / 'application_result.json'}")
+        if result.errors:
+            print("Errors:")
+            for err in result.errors:
+                print(f"- {err}")
+        if result.proof_text:
+            print(f"Proof: {result.proof_text}")
 
-            result = None
-            with contextlib.suppress(Exception):
-                result = getattr(history, "structured_output", None)
-
-            if result is None:
-                raw_final: str | None = None
-                with contextlib.suppress(Exception):
-                    raw_final = history.final_result()
-
-                raw_json = _extract_first_json_object(raw_final or "")
-                if raw_json:
-                    with contextlib.suppress(Exception):
-                        result = ApplicationRunResult.model_validate_json(raw_json)
-
-            if result is None:
-                result = ApplicationRunResult(
-                    success=False,
-                    status=RunStatus.FAILED,
-                    errors=["Runner did not produce structured output"],
-                )
-
-            proof_path = run_dir / "proof.png"
-            with contextlib.suppress(Exception):
-                if browser is not None:
-                    asyncio.run(
-                        browser.take_screenshot(path=str(proof_path), full_page=False)
-                    )
-                    result.proof_screenshot_path = str(proof_path)
-
-            with open(run_dir / "application_result.json", "w", encoding="utf-8") as f:
-                f.write(result.model_dump_json(indent=2))
-
-            print(f"Status: {result.status.value}")
-            print(f"Wrote: {run_dir / 'application_result.json'}")
-            if result.errors:
-                print("Errors:")
-                for err in result.errors:
-                    print(f"- {err}")
-            if result.proof_text:
-                print(f"Proof: {result.proof_text}")
-
-            return 0 if getattr(result, "success", False) else 1
-        finally:
-            if browser is not None:
-                with contextlib.suppress(Exception):
-                    asyncio.run(browser.close())
+        return 0 if getattr(result, "success", False) else 1
 
     if parsed.mode == "tracker":
         from src.tracker.models import ApplicationStatus

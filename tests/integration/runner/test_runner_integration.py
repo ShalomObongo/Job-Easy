@@ -16,7 +16,7 @@ async def test_runner_single_job_smoke() -> None:
 
     This requires:
     - a reachable job/application URL
-    - configured LLM credentials for Browser Use
+    - a running local Skyvern service (`RUNNER_SKYVERN_BASE_URL`)
     """
     url = os.getenv("RUNNER_INTEGRATION_URL")
     if not url:

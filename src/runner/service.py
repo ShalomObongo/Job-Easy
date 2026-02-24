@@ -13,10 +13,10 @@ from urllib.parse import urlparse
 
 from src.extractor.models import JobDescription
 from src.hitl import tools as hitl
-from src.runner.agent import create_application_agent, create_browser, get_runner_llm
 from src.runner.domains import is_prohibited, record_allowed_domain
 from src.runner.models import ApplicationRunResult, RunStatus
 from src.runner.qa_bank import ScopeHint
+from src.runner.skyvern_runner import run_application_with_skyvern
 from src.runner.yolo import build_yolo_context
 from src.tailoring.config import TailoringConfig
 from src.tailoring.service import TailoringService
@@ -297,6 +297,7 @@ class SingleJobApplicationService:
         result = await self._run_application_flow(
             job_url=start_url,
             run_dir=run_dir,
+            job=job_obj,
             profile=profile_obj,
             resume_path=resume_path,
             cover_letter_path=cover_letter_path,
@@ -330,6 +331,7 @@ class SingleJobApplicationService:
         *,
         job_url: str,
         run_dir: Path,
+        job: JobDescription | None,
         profile: Any,
         resume_path: str | None,
         cover_letter_path: str | None,
@@ -338,133 +340,32 @@ class SingleJobApplicationService:
         yolo_context: dict[str, Any] | None = None,
         auto_submit: bool = False,
     ) -> ApplicationRunResult:
-        """Run the Browser Use application agent and persist artifacts."""
+        """Run the Skyvern-backed application flow and persist artifacts."""
+        result = await run_application_with_skyvern(
+            settings=self.settings,
+            job_url=job_url,
+            run_dir=run_dir,
+            job=job,
+            profile=profile,
+            resume_path=resume_path,
+            cover_letter_path=cover_letter_path,
+            qa_scope_hints=qa_scope_hints,
+            yolo_mode=yolo_mode,
+            yolo_context=yolo_context,
+            auto_submit=auto_submit,
+        )
+
+        # Backward-compatible allowlist logging for final URL if we did not receive
+        # full visited URL history from Skyvern response artifacts.
         prohibited_domains = list(getattr(self.settings, "prohibited_domains", []))
         allowlist_log_path = getattr(
             self.settings, "allowlist_log_path", Path("./data/allowlist.log")
         )
-
-        llm = get_runner_llm(self.settings)
-        if llm is None:
-            return ApplicationRunResult(
-                success=False,
-                status=RunStatus.FAILED,
-                errors=["No LLM configured for runner"],
-            )
-
-        sensitive_data: dict[str, str | dict[str, str]] = {}
-        name_value = getattr(profile, "name", None)
-        if name_value:
-            name_str = str(name_value).strip()
-            if name_str:
-                sensitive_data["full_name"] = name_str
-                parts = [p for p in name_str.split() if p]
-                if parts:
-                    sensitive_data["first_name"] = parts[0]
-                    if len(parts) > 1:
-                        sensitive_data["last_name"] = " ".join(parts[1:])
-        for key, attr in (
-            ("email", "email"),
-            ("phone", "phone"),
-            ("location", "location"),
-            ("linkedin_url", "linkedin_url"),
-            ("github_url", "github_url"),
-        ):
-            value = getattr(profile, attr, None)
-            if value:
-                sensitive_data[key] = str(value)
-
-        def _expand_upload_paths(paths: list[str]) -> list[str]:
-            expanded: list[str] = []
-            seen: set[str] = set()
-            for raw in paths:
-                raw_str = str(raw).strip()
-                if not raw_str:
-                    continue
-                for candidate in (raw_str, str(Path(raw_str).expanduser().resolve())):
-                    if candidate in seen:
-                        continue
-                    seen.add(candidate)
-                    expanded.append(candidate)
-            return expanded
-
-        upload_paths = [p for p in [resume_path, cover_letter_path] if p]
-        available_file_paths = _expand_upload_paths(upload_paths)
-        conversation_path = run_dir / "conversation.jsonl"
-
-        browser = None
-        try:
-            browser = create_browser(
-                self.settings, prohibited_domains=prohibited_domains
-            )
-            agent = create_application_agent(
-                job_url=job_url,
-                browser=browser,
-                llm=llm,
-                available_file_paths=available_file_paths,
-                save_conversation_path=conversation_path,
-                qa_bank_path=getattr(
-                    self.settings, "qa_bank_path", Path("./data/qa_bank.json")
-                ),
-                qa_scope_hints=qa_scope_hints,
-                sensitive_data=cast(
-                    dict[str, str | dict[str, str]] | None, sensitive_data
-                ),
-                yolo_mode=yolo_mode,
-                yolo_context=yolo_context,
-                auto_submit=auto_submit,
-                max_failures=getattr(self.settings, "runner_max_failures", 3),
-                max_actions_per_step=getattr(
-                    self.settings, "runner_max_actions_per_step", 4
-                ),
-                step_timeout=getattr(self.settings, "runner_step_timeout", 120),
-                use_vision=getattr(self.settings, "runner_use_vision", "auto"),
-            )
-
-            history = await agent.run()
-            structured = getattr(history, "structured_output", None)
-            result = structured or ApplicationRunResult(
-                success=False, status=RunStatus.FAILED, errors=["No structured output"]
-            )
-
+        if result.final_url and not is_prohibited(result.final_url, prohibited_domains):
             with contextlib.suppress(Exception):
-                result.visited_urls = list(history.urls())
-            if result.visited_urls:
-                result.final_url = result.visited_urls[-1]
+                record_allowed_domain(result.final_url, allowlist_log_path)
 
-            for visited in result.visited_urls:
-                if prohibited_domains and is_prohibited(visited, prohibited_domains):
-                    continue
-                with contextlib.suppress(Exception):
-                    record_allowed_domain(visited, allowlist_log_path)
-
-            proof_path = run_dir / "proof.png"
-            with contextlib.suppress(Exception):
-                if browser is not None:
-                    await browser.take_screenshot(path=str(proof_path), full_page=False)
-                    result.proof_screenshot_path = str(proof_path)
-
-            with contextlib.suppress(Exception):
-                result.save_json(run_dir / "application_result.json")
-
-            return result
-        except Exception as e:
-            logger.exception("Runner agent failed: %s", e)
-            result = ApplicationRunResult(
-                success=False, status=RunStatus.FAILED, errors=[str(e)]
-            )
-            proof_path = run_dir / "proof.png"
-            with contextlib.suppress(Exception):
-                if browser is not None:
-                    await browser.take_screenshot(path=str(proof_path), full_page=False)
-                    result.proof_screenshot_path = str(proof_path)
-            with contextlib.suppress(Exception):
-                result.save_json(run_dir / "application_result.json")
-            return result
-        finally:
-            if browser is not None:
-                with contextlib.suppress(Exception):
-                    await browser.close()
+        return result
 
 
 async def run_single_job(url: str, *, settings: Any) -> ApplicationRunResult:
