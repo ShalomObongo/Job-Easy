@@ -14,33 +14,33 @@
     - [x] Define explicit transition behavior where parity is not feasible
 
 ## Phase 2: Local Skyvern Runtime and Configuration Integration
-- [ ] Task: Add Skyvern runner configuration surface in Job-Easy settings
-    - [ ] Local Skyvern API base URL and auth settings
-    - [ ] Local-only guardrails (reject cloud endpoints by default)
-    - [ ] Timeout/retry/polling controls
-- [ ] Task: Add browser profile reuse compatibility guidance
-    - [ ] Document required Skyvern env vars (`BROWSER_TYPE=cdp-connect`, `CHROME_EXECUTABLE_PATH`)
-    - [ ] Document optional attached-browser mode (`browser_address`) and required remote-debugging launch args
-    - [ ] Document profile-copy behavior and first-run expectations
-    - [ ] Align with existing `CHROME_USER_DATA_DIR` / `CHROME_PROFILE_DIR` operational flow
-- [ ] Task: Standardize API integration on Skyvern Python SDK
-    - [ ] Avoid direct hard-coded REST endpoint strings in runner
-    - [ ] Add notes for endpoint-version drift seen in docs (`/v1/run/tasks` vs `/api/v1/tasks`)
-    - [ ] Ensure local base_url wiring is explicit and test-covered
-- [ ] Task: Implement legacy `RUNNER_LLM_*` compatibility mapping
-    - [ ] Add adapter to map:
-      - [ ] `RUNNER_LLM_PROVIDER`
-      - [ ] `RUNNER_LLM_API_KEY`
-      - [ ] `RUNNER_LLM_BASE_URL`
-      - [ ] `RUNNER_LLM_MODEL`
-      - [ ] `RUNNER_LLM_REASONING_EFFORT`
+- [x] Task: Add Skyvern runner configuration surface in Job-Easy settings
+    - [x] Local Skyvern API base URL and auth settings
+    - [x] Local-only guardrails (reject cloud endpoints by default)
+    - [x] Timeout/retry/polling controls
+- [x] Task: Add browser profile reuse compatibility guidance
+    - [x] Document required Skyvern env vars (`BROWSER_TYPE=cdp-connect`, `CHROME_EXECUTABLE_PATH`)
+    - [x] Document optional attached-browser mode (`browser_address`) and required remote-debugging launch args
+    - [x] Document profile-copy behavior and first-run expectations
+    - [x] Align with existing `CHROME_USER_DATA_DIR` / `CHROME_PROFILE_DIR` operational flow
+- [x] Task: Standardize API integration on Skyvern Python SDK
+    - [x] Avoid direct hard-coded REST endpoint strings in runner
+    - [x] Add notes for endpoint-version drift seen in docs (`/v1/run/tasks` vs `/api/v1/tasks`)
+    - [x] Ensure local base_url wiring is explicit and test-covered
+- [x] Task: Implement legacy `RUNNER_LLM_*` compatibility mapping
+    - [x] Add adapter to map:
+      - [x] `RUNNER_LLM_PROVIDER`
+      - [x] `RUNNER_LLM_API_KEY`
+      - [x] `RUNNER_LLM_BASE_URL`
+      - [x] `RUNNER_LLM_MODEL`
+      - [x] `RUNNER_LLM_REASONING_EFFORT`
       into Skyvern provider env/config inputs
-    - [ ] Prefer OpenAI-compatible bridge when `RUNNER_LLM_BASE_URL` is set
-    - [ ] Add strict validation for unsupported combinations (e.g. `browser_use` provider in Skyvern mode)
-    - [ ] Define precedence between explicit Skyvern config, compatibility mapping, and service defaults
-- [ ] Task: Add startup/health diagnostics for local Skyvern dependency
-    - [ ] Fast-fail checks with actionable error messages
-    - [ ] Optional health probe helper for CLI and tests
+    - [x] Prefer OpenAI-compatible bridge when `RUNNER_LLM_BASE_URL` is set
+    - [x] Add strict validation for unsupported combinations (e.g. `browser_use` provider in Skyvern mode)
+    - [x] Define precedence between explicit Skyvern config, compatibility mapping, and service defaults
+- [x] Task: Add startup/health diagnostics for local Skyvern dependency
+    - [x] Fast-fail checks with actionable error messages
+    - [x] Optional health probe helper for CLI and tests
 
 ## Phase 3: Implement Skyvern Runner Adapter
 - [ ] Task: Implement typed Skyvern client wrapper for runner module

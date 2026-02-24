@@ -20,6 +20,7 @@ dependencies = [
     "litellm>=1.50.0",
     "jinja2>=3.1.0",
     "weasyprint>=62.0",
+    "skyvern>=0.1.0",
 ]
 
 [project.optional-dependencies]

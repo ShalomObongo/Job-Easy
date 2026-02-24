@@ -1,7 +1,7 @@
 """Configuration settings for Job-Easy."""
 
 import json
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
@@ -9,7 +9,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Mode(str, Enum):
+class Mode(StrEnum):
     """Application operating mode."""
 
     SINGLE = "single"
@@ -146,6 +146,91 @@ class Settings(BaseSettings):
             "'medium', 'high', 'xhigh')."
         ),
     )
+    runner_backend: str = Field(
+        default="skyvern_local",
+        description="Runner backend implementation. Currently only 'skyvern_local'.",
+    )
+    runner_skyvern_base_url: str = Field(
+        default="http://localhost:8000",
+        description="Local Skyvern API base URL for runner execution.",
+    )
+    runner_skyvern_api_key: str | None = Field(
+        default=None,
+        description="Optional Skyvern API key for local runner execution.",
+    )
+    runner_skyvern_timeout_seconds: Annotated[int, Field(gt=0)] = Field(
+        default=15,
+        description="HTTP timeout in seconds for Skyvern health and artifact requests.",
+    )
+    runner_skyvern_poll_interval_seconds: Annotated[float, Field(gt=0)] = Field(
+        default=1.5,
+        description="Polling interval in seconds for async Skyvern run checks.",
+    )
+    runner_skyvern_max_wait_seconds: Annotated[int, Field(gt=0)] = Field(
+        default=900,
+        description="Maximum wait in seconds for Skyvern run completion.",
+    )
+    runner_skyvern_enforce_local: bool = Field(
+        default=True,
+        description="Reject non-local Skyvern base URLs for runner execution.",
+    )
+    runner_skyvern_verify_health: bool = Field(
+        default=True,
+        description="Probe Skyvern health endpoint before execution.",
+    )
+    runner_skyvern_env_overrides: str | None = Field(
+        default=None,
+        description=(
+            "Optional JSON object of Skyvern env overrides. "
+            "Applied before mapped RUNNER_LLM_* compatibility values."
+        ),
+    )
+    runner_skyvern_workflow_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional workflow ID for runner execution. If unset, runner uses run_task."
+        ),
+    )
+    runner_skyvern_browser_profile_id: str | None = Field(
+        default=None,
+        description="Optional browser profile ID for persistent authenticated sessions.",
+    )
+    runner_skyvern_browser_session_id: str | None = Field(
+        default=None,
+        description="Optional browser session ID for session reuse.",
+    )
+    runner_skyvern_browser_address: str | None = Field(
+        default=None,
+        description="Optional remote-debugging browser address (e.g. 127.0.0.1:9222).",
+    )
+    runner_skyvern_browser_path: str | None = Field(
+        default=None,
+        description="Optional Chrome executable path for Skyvern CDP connect mode.",
+    )
+    runner_skyvern_persist_browser_session: bool = Field(
+        default=False,
+        description="Request browser session persistence for profile bootstrap/rotation.",
+    )
+    runner_skyvern_profile_bootstrap_workflow_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional workflow ID used to bootstrap and persist a browser session profile."
+        ),
+    )
+    runner_skyvern_profile_name: str = Field(
+        default="job-easy-profile",
+        description="Name used when creating a Skyvern browser profile.",
+    )
+    runner_skyvern_profile_create_retries: Annotated[int, Field(gt=0)] = Field(
+        default=10,
+        description="Retries for async browser profile archive availability.",
+    )
+    runner_skyvern_profile_create_retry_delay_seconds: Annotated[float, Field(gt=0)] = (
+        Field(
+            default=1.0,
+            description="Retry delay in seconds for browser profile creation.",
+        )
+    )
 
     # Chrome profile settings
     use_existing_chrome_profile: bool = Field(
@@ -276,6 +361,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 "runner_llm_provider must be one of: auto, openai, anthropic, browser_use"
             )
+        return value
+
+    @field_validator("runner_backend", mode="before")
+    @classmethod
+    def validate_runner_backend(cls, v: str) -> str:
+        """Validate runner backend selection."""
+        if not isinstance(v, str):
+            raise ValueError("runner_backend must be a string")
+        value = v.lower().strip()
+        if value != "skyvern_local":
+            raise ValueError("runner_backend must be 'skyvern_local'")
         return value
 
 
